@@ -105,6 +105,14 @@ sudo apt install mpv
 pip install yt-dlp
 ```
 
+### Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/5c0r/TuiTunes/main/install.sh | bash
+```
+
+Installs Bun (if needed), tui-tunes, and checks for mpv + yt-dlp.
+
 ### Install via npm
 
 ```bash
