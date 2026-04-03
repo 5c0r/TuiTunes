@@ -242,8 +242,8 @@ bunx tsc --noEmit # Type check
 ### Compiled Binary
 
 ```bash
-bun build --compile --minify src/index.tsx --outfile tuimusic
-./tuimusic
+bun build --compile --minify src/index.tsx --outfile dist/tuimusic
+./dist/tuimusic
 ```
 
 Produces a standalone ~105MB binary (includes Bun runtime). Still requires system mpv and yt-dlp.

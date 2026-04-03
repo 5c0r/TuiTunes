@@ -13,7 +13,7 @@ bun run start        # Launch
 bun run dev          # Watch mode
 bun test             # 92 tests
 bunx tsc --noEmit    # Type check
-bun build --compile --minify src/index.tsx --outfile tuimusic  # Binary
+bun build --compile --minify src/index.tsx --outfile dist/tuimusic  # Binary
 ```
 
 ---

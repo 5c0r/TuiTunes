@@ -11,7 +11,7 @@
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun --watch run src/index.tsx",
-    "build": "bun build --compile --minify src/index.tsx --outfile tuimusic",
+    "build": "bun build --compile --minify src/index.tsx --outfile dist/tuimusic",
     "lint": "bunx tsc --noEmit",
     "test": "bun test"
   },

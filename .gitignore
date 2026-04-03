@@ -1,10 +1,24 @@
+# Dependencies
 node_modules/
-tuimusic
+bun.lock
+
+# Build output
+dist/
+
+# Database
 *.db
 *.db-shm
 *.db-wal
+
+# Logs
 debug.log
+
+# OS
 .DS_Store
+
+# Temp
 /tmp/
-bun.lock
+
+# Legacy binaries (before dist/ convention)
+tuimusic
 tunefork
