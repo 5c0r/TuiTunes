@@ -5,12 +5,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/5c0r/TuiTunes.git"
+    "url": "git+https://github.com/5c0r/TuiTunes.git"
   },
   "homepage": "https://github.com/5c0r/TuiTunes#readme",
   "keywords": [
-    "terminal", "music", "player", "tui", "podcast",
-    "youtube-music", "mpv", "lyrics", "bun"
+    "terminal",
+    "music",
+    "player",
+    "tui",
+    "podcast",
+    "youtube-music",
+    "mpv",
+    "lyrics",
+    "bun"
   ],
   "engines": {
     "bun": ">=1.2.0"
