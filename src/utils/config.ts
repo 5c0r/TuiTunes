@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-export interface TuneForkConfig {
+export interface TuiTunesConfig {
   defaultProvider: string;
   volume: number;
   localMusicDirs: string[];
@@ -11,10 +11,10 @@ export interface TuneForkConfig {
   visitorData: string | null;
 }
 
-export const CONFIG_DIR = path.join(os.homedir(), '.config', 'tunefork');
+export const CONFIG_DIR = path.join(os.homedir(), '.config', 'tuimusic');
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
-export const DEFAULT_CONFIG: TuneForkConfig = {
+export const DEFAULT_CONFIG: TuiTunesConfig = {
   defaultProvider: 'youtube',
   volume: 80,
   localMusicDirs: [path.join(os.homedir(), 'Music')],
@@ -23,17 +23,17 @@ export const DEFAULT_CONFIG: TuneForkConfig = {
   visitorData: null,
 };
 
-export function loadConfig(): TuneForkConfig {
+export function loadConfig(): TuiTunesConfig {
   try {
     const raw = readFileSync(CONFIG_PATH, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<TuneForkConfig>;
+    const parsed = JSON.parse(raw) as Partial<TuiTunesConfig>;
     return { ...DEFAULT_CONFIG, ...parsed };
   } catch {
     return { ...DEFAULT_CONFIG };
   }
 }
 
-export function saveConfig(config: TuneForkConfig): void {
+export function saveConfig(config: TuiTunesConfig): void {
   mkdirSync(CONFIG_DIR, { recursive: true });
   Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n');
 }

@@ -1,4 +1,4 @@
-# TuneFork Roadmap
+# TuiTunes Roadmap
 
 ## Current State (v0.2.0)
 
@@ -62,9 +62,9 @@
 - [ ] ~20 lines across process.ts + ipc.ts
 
 ### Platform Config Paths
-- [ ] Windows: %APPDATA%\tunefork\
-- [ ] macOS: ~/Library/Application Support/tunefork/
-- [ ] Linux: $XDG_CONFIG_HOME/tunefork/
+- [ ] Windows: %APPDATA%\tuimusic\
+- [ ] macOS: ~/Library/Application Support/tuimusic/
+- [ ] Linux: $XDG_CONFIG_HOME/tuimusic/
 
 ## Priority 3: Features
 

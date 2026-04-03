@@ -7,7 +7,7 @@ import { Logger } from '../utils/logger';
 // Prefer XDG_RUNTIME_DIR (per-user tmpdir, no cleanup races),
 // fall back to /tmp with a user-scoped name.
 const runtimeDir = process.env.XDG_RUNTIME_DIR ?? os.tmpdir();
-export const SOCKET_PATH = path.join(runtimeDir, 'tunefork-mpv.sock');
+export const SOCKET_PATH = path.join(runtimeDir, 'tuimusic-mpv.sock');
 
 const MPV_ARGS = [
   '--idle',

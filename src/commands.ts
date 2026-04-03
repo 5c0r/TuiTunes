@@ -43,7 +43,7 @@ export const COMMANDS: Command[] = [
   { id: 'transcript-auto', name: 'Transcript: Auto Source', description: 'Reset to automatic transcript detection', category: 'view' },
   { id: 'transcript-reload', name: 'Transcript: Reload', description: 'Re-fetch transcript for current episode', category: 'view' },
   { id: 'help', name: 'Help', description: 'Show keybindings', shortcut: '?', category: 'app' },
-  { id: 'quit', name: 'Quit', description: 'Exit TuneFork', shortcut: 'ctrl+q', category: 'app' },
+  { id: 'quit', name: 'Quit', description: 'Exit TuiTunes', shortcut: 'ctrl+q', category: 'app' },
 ];
 
 /** Fuzzy filter commands by query. Matches against name and description. */

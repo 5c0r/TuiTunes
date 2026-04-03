@@ -76,7 +76,7 @@ export async function extractYouTubeSrt(videoId: string): Promise<{ srt: string;
   const { join } = await import('node:path');
   const { existsSync, readFileSync, unlinkSync } = await import('node:fs');
 
-  const tempBase = join(tmpdir(), `tunefork-yt-${videoId}`);
+  const tempBase = join(tmpdir(), `tuimusic-yt-${videoId}`);
   const srtPath = `${tempBase}.en.srt`;
   const videoUrl = youtubeUrl(videoId);
 

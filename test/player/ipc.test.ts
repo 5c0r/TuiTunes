@@ -9,7 +9,7 @@ type ServerSocket = Socket<unknown>;
 
 describe('MpvIPC', () => {
   // Ensure logger directory exists so Logger.appendFileSync doesn't blow up
-  mkdirSync(join(homedir(), '.config', 'tunefork'), { recursive: true });
+  mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
 
   let socketPath: string;
   let server: ReturnType<typeof Bun.listen>;
@@ -18,7 +18,7 @@ describe('MpvIPC', () => {
   let onServerData: (socket: ServerSocket, data: Buffer) => void = () => {};
 
   beforeEach(async () => {
-    socketPath = `/tmp/tunefork-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`;
+    socketPath = `/tmp/tuimusic-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`;
     try { unlinkSync(socketPath); } catch {}
 
     server = Bun.listen({

@@ -21,7 +21,7 @@
 
 ### 1. mpv IPC Transport (BLOCKER on Windows)
 
-**Current**: Unix domain socket at `$XDG_RUNTIME_DIR/tunefork-mpv.sock`
+**Current**: Unix domain socket at `$XDG_RUNTIME_DIR/tuimusic-mpv.sock`
 
 **Problem**: Windows doesn't support Unix domain sockets for mpv IPC. mpv on Windows uses named pipes (`\\.\pipe\name`), and Bun's `Bun.connect()` doesn't support named pipes.
 
@@ -36,23 +36,23 @@ Estimated effort: ~20 lines across 2 files.
 
 ### 2. Config Directory
 
-**Current**: Hardcoded `~/.config/tunefork/`
+**Current**: Hardcoded `~/.config/tuimusic/`
 
 **Convention per platform**:
-- Linux: `~/.config/tunefork/` (XDG_CONFIG_HOME)
-- macOS: `~/Library/Application Support/tunefork/` (preferred) or `~/.config/` (works)
-- Windows: `%APPDATA%\tunefork\`
+- Linux: `~/.config/tuimusic/` (XDG_CONFIG_HOME)
+- macOS: `~/Library/Application Support/tuimusic/` (preferred) or `~/.config/` (works)
+- Windows: `%APPDATA%\tuimusic\`
 
 **Fix**: In `src/utils/config.ts`:
 ```typescript
 function getConfigDir(): string {
   if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA ?? os.homedir(), 'tunefork');
+    return path.join(process.env.APPDATA ?? os.homedir(), 'tuimusic');
   }
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'tunefork');
+    return path.join(os.homedir(), 'Library', 'Application Support', 'tuimusic');
   }
-  return path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'tunefork');
+  return path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'tuimusic');
 }
 ```
 
@@ -120,10 +120,10 @@ OpenTUI supports two keyboard input modes:
 | Issue | Platform | Details |
 |---|---|---|
 | **Ctrl+C = Copy** | Windows Terminal | Default setting. Users can change in settings or use Ctrl+Q to quit. |
-| **Option = Esc** | macOS Terminal.app | Option key sends escape sequences. TuneFork doesn't use Alt/Option, so no impact. |
-| **Ctrl+B prefix** | tmux | Conflicts with any Ctrl+B binding. TuneFork doesn't use Ctrl+B. |
-| **Ctrl+L = clear** | Some shells | Only matters if running outside TuneFork. Inside the app, we capture Ctrl+L for layout cycling. |
-| **Meta key** | Varies | Some terminals don't send meta. TuneFork doesn't use meta-based bindings. |
+| **Option = Esc** | macOS Terminal.app | Option key sends escape sequences. TuiTunes doesn't use Alt/Option, so no impact. |
+| **Ctrl+B prefix** | tmux | Conflicts with any Ctrl+B binding. TuiTunes doesn't use Ctrl+B. |
+| **Ctrl+L = clear** | Some shells | Only matters if running outside TuiTunes. Inside the app, we capture Ctrl+L for layout cycling. |
+| **Meta key** | Varies | Some terminals don't send meta. TuiTunes doesn't use meta-based bindings. |
 
 ### Unicode / Emoji Support
 

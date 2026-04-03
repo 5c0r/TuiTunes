@@ -25,7 +25,7 @@ export function QuitConfirm({ visible }: QuitConfirmProps) {
         borderStyle="double"
         borderColor={t.red}
         backgroundColor={t.bg}
-        title="Quit TuneFork?"
+        title="Quit TuiTunes?"
         flexDirection="column"
         alignItems="center"
         justifyContent="center"

@@ -1,5 +1,5 @@
 import type { IProvider } from './types';
-import type { TuneForkConfig } from '../utils/config';
+import type { TuiTunesConfig } from '../utils/config';
 import { YouTubeProvider } from './youtube';
 
 const providers: Map<string, IProvider> = new Map();
@@ -24,6 +24,6 @@ export function getAllProviders(): IProvider[] {
   return Array.from(providers.values());
 }
 
-export function initProviders(_config: TuneForkConfig): void {
+export function initProviders(_config: TuiTunesConfig): void {
   registerProvider(new YouTubeProvider());
 }

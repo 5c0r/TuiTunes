@@ -1,8 +1,8 @@
-# AGENTS.md - TuneFork Development Guide
+# AGENTS.md - TuiTunes Development Guide
 
 ## Project Summary
 
-TuneFork is a terminal music player + podcast client built on OpenTUI (Zig native rendering + React 19) with mpv as the playback engine. 45 source files, 92 tests, strict TypeScript.
+TuiTunes is a terminal music player + podcast client built on OpenTUI (Zig native rendering + React 19) with mpv as the playback engine. 45 source files, 92 tests, strict TypeScript.
 
 **Runtime**: Bun 1.3+ | **TUI**: OpenTUI 0.1.96 | **Playback**: mpv + yt-dlp | **State**: Jotai v2 | **DB**: bun:sqlite
 
@@ -13,7 +13,7 @@ bun run start        # Launch
 bun run dev          # Watch mode
 bun test             # 92 tests
 bunx tsc --noEmit    # Type check
-bun build --compile --minify src/index.tsx --outfile tunefork  # Binary
+bun build --compile --minify src/index.tsx --outfile tuimusic  # Binary
 ```
 
 ---
@@ -22,7 +22,7 @@ bun build --compile --minify src/index.tsx --outfile tunefork  # Binary
 
 ### Two-Level Section Model
 
-TuneFork has two top-level **sections**: `music` and `podcast` (Ctrl+1 / Ctrl+2). Each section has its own sidebar views and search routing.
+TuiTunes has two top-level **sections**: `music` and `podcast` (Ctrl+1 / Ctrl+2). Each section has its own sidebar views and search routing.
 
 ```
 Section: music                    Section: podcast
@@ -141,9 +141,9 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | File | Purpose |
 |---|---|
 | `src/utils/deps.ts` | checkDependencies(): mpv version check |
-| `src/utils/config.ts` | Load/save ~/.config/tunefork/config.json |
+| `src/utils/config.ts` | Load/save ~/.config/tuimusic/config.json |
 | `src/utils/format.ts` | formatTime(), truncateText(), padRight() |
-| `src/utils/logger.ts` | Logger class → ~/.config/tunefork/debug.log |
+| `src/utils/logger.ts` | Logger class → ~/.config/tuimusic/debug.log |
 
 ---
 

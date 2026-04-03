@@ -12,13 +12,13 @@ import { App } from './app';
 
 async function main(): Promise<void> {
   Logger.init();
-  Logger.info('TuneFork starting');
+  Logger.info('TuiTunes starting');
   initDb();
 
   // 1. Verify system dependencies
   if (!checkDependencies()) {
     process.stderr.write(
-      'TuneFork requires mpv to be installed. Check ~/.config/tunefork/debug.log for details.\n'
+      'TuiTunes requires mpv to be installed. Check ~/.config/tuimusic/debug.log for details.\n'
     );
     process.exit(1);
   }
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   async function cleanup(): Promise<void> {
     if (exiting) return;
     exiting = true;
-    Logger.info('TuneFork shutting down');
+    Logger.info('TuiTunes shutting down');
     root.unmount();
     await controller.destroy();
     renderer.destroy(); // restores alternate screen + raw mode

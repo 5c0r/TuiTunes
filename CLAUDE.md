@@ -1,4 +1,4 @@
-# CLAUDE.md - TuneFork
+# CLAUDE.md - TuiTunes
 
 See **AGENTS.md** for the comprehensive development guide (file map, architecture, gotchas, keybindings).
 

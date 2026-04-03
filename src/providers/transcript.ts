@@ -78,7 +78,7 @@ async function fetchFromYoutube(episode: Episode): Promise<{ lines: LyricLine[];
   }
 
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const tempBase = join(tmpdir(), `tunefork-transcript-${videoId}`);
+  const tempBase = join(tmpdir(), `tuimusic-transcript-${videoId}`);
   const srtPath = `${tempBase}.en.srt`;
 
   try {

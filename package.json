@@ -1,16 +1,17 @@
 {
-  "name": "tunefork",
-  "version": "0.1.0",
-  "description": "Multi-provider music TUI built on OpenTUI with mpv playback",
+  "name": "tuimusic",
+  "version": "0.2.0",
+  "description": "Terminal music player & podcast client with YouTube Music, synced lyrics, and 8 themes",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.tsx",
   "bin": {
-    "tunefork": "src/index.tsx"
+    "tuimusic": "src/index.tsx"
   },
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun --watch run src/index.tsx",
-    "build": "bun build --compile --minify src/index.tsx --outfile tunefork",
+    "build": "bun build --compile --minify src/index.tsx --outfile tuimusic",
     "lint": "bunx tsc --noEmit",
     "test": "bun test"
   },

@@ -24,7 +24,7 @@ export function Header({ focused, section, onSearch, onSectionChange }: HeaderPr
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={t.accent} attributes={TextAttributes.BOLD}>TuneFork </text>
+      <text fg={t.accent} attributes={TextAttributes.BOLD}>TuiTunes </text>
       {/* Section tabs */}
       <text
         fg={section === 'music' ? t.accent : t.dim}

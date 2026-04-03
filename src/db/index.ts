@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { CONFIG_DIR } from '../utils/config';
 import { Logger } from '../utils/logger';
 
-const DB_PATH = path.join(CONFIG_DIR, 'tunefork.db');
+const DB_PATH = path.join(CONFIG_DIR, 'tuimusic.db');
 
 const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS favorites (

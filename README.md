@@ -9,7 +9,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 **Music Search (Tokyo Night theme)**
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────╮
-│ TuneFork  ♪ Music │ 🎙 Podcast  Search music...                                 │
+│ TuiTunes  ♪ Music │ 🎙 Podcast  Search music...                                 │
 ╰──────────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────╮╭─Results (20)──────────────────────────────────────────────────────╮
 │ ♪ Music      ││  1  ▸ Let Down                                             5:00 │
@@ -30,7 +30,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 **Podcast Section**
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────╮
-│ TuneFork  ♪ Music │ 🎙 Podcast  Search podcasts...                               │
+│ TuiTunes  ♪ Music │ 🎙 Podcast  Search podcasts...                               │
 ╰──────────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────╮╭─Podcasts──────────────────────────────────────────────────────────╮
 │ 🎙 Podcasts   ││  1  ▸ Lex Fridman Podcast                                    ✓ │
@@ -211,7 +211,7 @@ Cycle with `Ctrl+L` or via command palette:
 
 ## Configuration
 
-Config file: `~/.config/tunefork/config.json`
+Config file: `~/.config/tuimusic/config.json`
 
 ```json
 {
@@ -225,8 +225,8 @@ Config file: `~/.config/tunefork/config.json`
 ```
 
 Data stored in:
-- `~/.config/tunefork/tunefork.db` - Favorites, history, podcast subscriptions (SQLite)
-- `~/.config/tunefork/debug.log` - Debug log
+- `~/.config/tuimusic/tuimusic.db` - Favorites, history, podcast subscriptions (SQLite)
+- `~/.config/tuimusic/debug.log` - Debug log
 
 ## Building
 
@@ -242,8 +242,8 @@ bunx tsc --noEmit # Type check
 ### Compiled Binary
 
 ```bash
-bun build --compile --minify src/index.tsx --outfile tunefork
-./tunefork
+bun build --compile --minify src/index.tsx --outfile tuimusic
+./tuimusic
 ```
 
 Produces a standalone ~105MB binary (includes Bun runtime). Still requires system mpv and yt-dlp.
