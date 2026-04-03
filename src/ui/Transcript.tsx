@@ -92,13 +92,19 @@ export function Transcript() {
 
   const paragraphs = data?.synced ? groupIntoParagraphs(data.lines) : [];
   const currentParaIdx = paragraphs.length > 0 ? findCurrentParagraph(paragraphs, position) : -1;
+  // Track the active segment within the current paragraph so scroll updates
+  // as phrases progress, not only when the paragraph changes.
+  const currentSegIdx = currentParaIdx >= 0
+    ? findCurrentSegment(paragraphs[currentParaIdx].segments, position)
+    : -1;
 
-  // Auto-scroll to center current paragraph in viewport
+  // Auto-scroll to keep current paragraph centered in viewport.
+  // Depends on both paragraph and segment so we re-center as the
+  // active phrase advances through a long paragraph.
   useEffect(() => {
     const sb = scrollRef.current;
     if (!sb || currentParaIdx < 0) return;
 
-    // Find the target child's position within the content
     const child = sb.content.findDescendantById(`para-${currentParaIdx}`);
     if (!child) return;
 
@@ -106,7 +112,7 @@ export function Transcript() {
     const viewportH = sb.viewport.height;
     const targetScroll = Math.max(0, child.y - Math.floor(viewportH * 0.4));
     sb.scrollTop = targetScroll;
-  }, [currentParaIdx]);
+  }, [currentParaIdx, currentSegIdx]);
 
   if (loading) {
     return (

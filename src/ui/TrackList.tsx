@@ -27,8 +27,9 @@ export function TrackList({
   const t = useTheme();
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
-  // Page-based scroll: only move when selection leaves visible area,
-  // then place selection at top of the new page.
+  // Smooth follow scroll: keep the selected row visible by scrolling
+  // just enough to reveal it at the viewport edge. Moving down places
+  // the row at the bottom; moving up places it at the top.
   useEffect(() => {
     const sb = scrollRef.current;
     if (!sb || tracks.length === 0) return;
@@ -42,19 +43,17 @@ export function TrackList({
     const childTop = child.y;
     const childBottom = child.y + child.height;
 
-    // Selection is below visible area → page down (selection at top)
+    // Selection below visible area → scroll to show at bottom edge
     if (childBottom > viewBottom) {
-      sb.scrollTop = childTop;
+      sb.scrollTop = childBottom - viewHeight;
       return;
     }
 
-    // Selection is above visible area → page up (selection at top)
+    // Selection above visible area → scroll to show at top edge
     if (childTop < viewTop) {
       sb.scrollTop = childTop;
       return;
     }
-
-    // Within visible area → don't scroll
   }, [selectedIndex, tracks.length]);
 
   if (tracks.length === 0) {

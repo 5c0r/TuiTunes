@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
+import type { ScrollBoxRenderable } from '@opentui/core';
 import { useTheme } from './useTheme';
 import { lyricsDataAtom, lyricsLoadingAtom } from '../store/lyrics';
 import { playerPositionAtom } from '../store/player';
@@ -66,6 +67,20 @@ export function Lyrics() {
   }
 
   const currentIdx = data.synced ? findCurrentLine(data.lines, position) : -1;
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+
+  // Auto-scroll to keep the current lyric line centered in the viewport
+  useEffect(() => {
+    const sb = scrollRef.current;
+    if (!sb || currentIdx < 0) return;
+
+    const child = sb.content.findDescendantById(`lyric-${currentIdx}`);
+    if (!child) return;
+
+    const viewportH = sb.viewport.height;
+    const targetScroll = Math.max(0, child.y - Math.floor(viewportH * 0.4));
+    sb.scrollTop = targetScroll;
+  }, [currentIdx]);
 
   return (
     <box
@@ -76,7 +91,7 @@ export function Lyrics() {
       flexGrow={1}
       flexDirection="column"
     >
-      <scrollbox>
+      <scrollbox ref={scrollRef}>
         {data.lines.map((line, i) => {
           if (data.synced) {
             const distance = currentIdx >= 0 ? Math.abs(i - currentIdx) : Infinity;
@@ -88,6 +103,7 @@ export function Lyrics() {
             return (
               <text
                 key={i}
+                id={`lyric-${i}`}
                 fg={color}
                 attributes={isCurrent ? TextAttributes.BOLD : 0}
               >

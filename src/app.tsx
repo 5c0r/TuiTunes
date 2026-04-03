@@ -116,6 +116,7 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
   const setRepeat = useSetAtom(repeatAtom);
   const setShuffle = useSetAtom(shuffleAtom);
   const setShuffledIndices = useSetAtom(shuffledIndicesAtom);
+  const shuffledIndices = useAtomValue(shuffledIndicesAtom);
   const playingFromQueue = useAtomValue(playingFromQueueAtom);
   const setPlayingFromQueue = useSetAtom(playingFromQueueAtom);
 
@@ -289,9 +290,10 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     const next = nextIndex(queueIndex, queue.length, repeat);
     if (next === null) return;
     setQueueIndex(next);
-    const track = queue[next];
+    const trackIdx = shuffle ? shuffledIndices[next] : next;
+    const track = queue[trackIdx];
     if (track) await playTrack(track);
-  }, [playingFromQueue, queueIndex, queue, repeat, setQueueIndex, playTrack]);
+  }, [playingFromQueue, queueIndex, queue, repeat, shuffle, shuffledIndices, setQueueIndex, playTrack]);
 
   // Auto-advance queue when track ends
   useEffect(() => {
@@ -303,9 +305,10 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     const prev = prevIndex(queueIndex, queue.length, repeat);
     if (prev === null) return;
     setQueueIndex(prev);
-    const track = queue[prev];
+    const trackIdx = shuffle ? shuffledIndices[prev] : prev;
+    const track = queue[trackIdx];
     if (track) await playTrack(track);
-  }, [playingFromQueue, queueIndex, queue, repeat, setQueueIndex, playTrack]);
+  }, [playingFromQueue, queueIndex, queue, repeat, shuffle, shuffledIndices, setQueueIndex, playTrack]);
 
   const handleToggleShuffle = useCallback(() => {
     setShuffle((prev) => {
@@ -695,16 +698,14 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
       return;
     }
 
-    // Load more search results (max 2 pages)
+    // Load more search results (max 2 pages) — Shift+L
     if (key.name === 'L') {
       if (section === 'music' && musicView === 'search' && searchHasMore) {
         void handleLoadMore();
-        return;
-      }
-      if (section === 'podcast' && podcastView === 'episodes' && hasMoreEpisodes) {
+      } else if (section === 'podcast' && podcastView === 'episodes' && hasMoreEpisodes) {
         setEpisodePageSize((prev) => prev + 50);
-        return;
       }
+      return;
     }
 
     // Sidebar navigation — when sidebar focused
@@ -742,19 +743,19 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
       }
     }
 
-    // Playback controls (search gate above ensures these never fire while typing)
-    if (key.name === 'space') void controller.togglePause();
-    else if (key.name === 'n') void handleNext();
-    else if (key.name === 'p') void handlePrev();
-    else if (key.name === '>') void controller.seekRelative(10);
-    else if (key.name === '<') void controller.seekRelative(-10);
-    else if (key.name === '=' || key.name === '+') void controller.addVolume(5);
-    else if (key.name === '-') void controller.addVolume(-5);
-    else if (key.name === 'm') void controller.toggleMute();
-    else if (key.name === 's') handleToggleShuffle();
-    else if (key.name === 'r') handleCycleRepeat();
-    else if (key.name === ']') void controller.cycleSpeedUp();
-    else if (key.name === '[') void controller.cycleSpeedDown();
+    // Playback controls — only when not in search input
+    if (key.name === 'space') { void controller.togglePause(); return; }
+    if (key.name === 'n') { void handleNext(); return; }
+    if (key.name === 'p') { void handlePrev(); return; }
+    if (key.name === '>') { void controller.seekRelative(10); return; }
+    if (key.name === '<') { void controller.seekRelative(-10); return; }
+    if (key.name === '=' || key.name === '+') { void controller.addVolume(5); return; }
+    if (key.name === '-') { void controller.addVolume(-5); return; }
+    if (key.name === 'm') { void controller.toggleMute(); return; }
+    if (key.name === 's') { handleToggleShuffle(); return; }
+    if (key.name === 'r') { handleCycleRepeat(); return; }
+    if (key.name === ']') { void controller.cycleSpeedUp(); return; }
+    if (key.name === '[') { void controller.cycleSpeedDown(); return; }
 
     // Focus management
     if (key.name === 'tab') {
