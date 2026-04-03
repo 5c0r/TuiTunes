@@ -1,0 +1,31 @@
+{
+  "name": "tunefork",
+  "version": "0.1.0",
+  "description": "Multi-provider music TUI built on OpenTUI with mpv playback",
+  "type": "module",
+  "main": "src/index.tsx",
+  "bin": {
+    "tunefork": "src/index.tsx"
+  },
+  "scripts": {
+    "start": "bun run src/index.tsx",
+    "dev": "bun --watch run src/index.tsx",
+    "build": "bun build --compile --minify src/index.tsx --outfile tunefork",
+    "lint": "bunx tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.96",
+    "@opentui/react": "^0.1.96",
+    "jotai": "^2.12.3",
+    "music-metadata": "^11.12.3",
+    "react": "^19.1.0",
+    "youtubei.js": "^17.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.12",
+    "@types/react": "^19.2.14",
+    "react-devtools-core": "^7.0.1",
+    "typescript": "^5.8.3"
+  }
+}

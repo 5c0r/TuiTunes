@@ -1,0 +1,9 @@
+node_modules/
+tunefork
+*.db
+*.db-shm
+*.db-wal
+debug.log
+.DS_Store
+/tmp/
+bun.lock
