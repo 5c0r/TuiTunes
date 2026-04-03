@@ -4,7 +4,48 @@ A terminal music player and podcast client with YouTube Music search, synced lyr
 
 Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + React 19) with [mpv](https://mpv.io/) as the audio engine.
 
-<!-- TODO: Add screenshot/demo gif -->
+## Screenshots
+
+**Music Search (Tokyo Night theme)**
+```
+╭──────────────────────────────────────────────────────────────────────────────────╮
+│ TuneFork  ♪ Music │ 🎙 Podcast  Search music...                                 │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+╭──────────────╮╭─Results (20)──────────────────────────────────────────────────────╮
+│ ♪ Music      ││  1  ▸ Let Down                                             5:00 │
+│  ▸ / Search  ││       Radiohead — OK Computer                                   │
+│    Q Queue   ││  2    Creep                                                3:59 │
+│    ♥ Favorites││       Radiohead — Creep                                        │
+│    ⟲ History ││  3    No Surprises                                         3:49 │
+│              ││       Radiohead — OK Computer                                   │
+│              ││  4    Everything In Its Right Place                        4:12 │
+│              ││       Radiohead — Kid A                                         │
+╰──────────────╯╰──────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────────╮
+│ ▶ ▃▆▅▇▂ Let Down — Radiohead 🔀 🔁             🔊80% 1.25x  2:07 / 5:00        │
+│ ━━━━━━━━━━━━━━━━━●───────────────────────                                       │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+```
+
+**Podcast Section**
+```
+╭──────────────────────────────────────────────────────────────────────────────────╮
+│ TuneFork  ♪ Music │ 🎙 Podcast  Search podcasts...                               │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+╭──────────────╮╭─Podcasts──────────────────────────────────────────────────────────╮
+│ 🎙 Podcasts   ││  1  ▸ Lex Fridman Podcast                                    ✓ │
+│  ▸ / Search  ││       Lex Fridman                                                │
+│    📋 My Feeds││  2    Huberman Lab                                              │
+│    📜 Episodes││       Scicomm Media                                              │
+│              ││  3    All-In Podcast                                             │
+│              ││       All-In Podcast, LLC                                         │
+╰──────────────╯╰──────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────────╮
+│ ⏹ ▁▁▁▁▁ No track                                        🔊80%  0:00 / 0:00     │
+│ ────────────────────────────────────────                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+```
+
 
 ## Features
 
