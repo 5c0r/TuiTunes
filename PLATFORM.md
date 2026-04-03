@@ -5,6 +5,7 @@
 | Platform | Status | Notes |
 |---|---|---|
 | **Linux** | Works | Tested on Arch (pacman). Also Debian/Ubuntu (apt). |
+| **WSL2** | Works | Requires WSLg (Win11 22H2+) or PulseAudio for audio. |
 | **macOS** | Works | `brew install mpv yt-dlp bun`. Unix sockets work. `~/.config` is fine. |
 | **Windows** | Blocked | mpv IPC uses Unix sockets. Needs TCP fallback (~20 lines). |
 
@@ -18,6 +19,21 @@
 | PipeWire/PulseAudio | Pre-installed on most distros | CoreAudio (built-in) | WASAPI (built-in) |
 
 ## Platform-Specific Issues
+
+### WSL2 (Windows Subsystem for Linux 2)
+
+**Status**: Works. All components (Bun, OpenTUI, mpv, yt-dlp, Unix sockets) run natively.
+
+**Audio**: Requires WSLg (Win11 22H2+ with updated WSL) which provides a PulseAudio server.
+TuiTunes auto-detects WSL2 and adds `--ao=pulse` to mpv args.
+
+**If no sound**:
+1. Verify WSLg: `ls /mnt/wslg/` should exist
+2. Check PulseAudio: `pactl info` should show a server
+3. Update WSL: `wsl --update` from PowerShell
+4. Manual PulseAudio: install `pulseaudio` in WSL, configure to connect to Windows PulseAudio server
+
+**Detection**: `isWSL()` in `src/utils/deps.ts` reads `/proc/version` for "microsoft" or "wsl".
 
 ### 1. mpv IPC Transport (BLOCKER on Windows)
 

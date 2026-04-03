@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { Socket } from 'bun';
 import { MpvIPC } from '../../src/player/ipc';
+import { OBSERVED_PROPERTIES } from '../../src/player/types';
 
 type ServerSocket = Socket<unknown>;
 
@@ -220,5 +221,192 @@ describe('MpvIPC', () => {
 
     // Verify connected state
     expect(ipc.connected).toBe(false);
+  });
+
+  // ── Convenience method tests ──────────────────────────────────────
+
+  test('loadfile sends correct command', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.loadfile('http://example.com/track.mp3');
+    expect(commands[0]).toEqual(['loadfile', 'http://example.com/track.mp3', 'replace']);
+  });
+
+  test('loadfile append-play mode', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.loadfile('http://example.com/track.mp3', 'append-play');
+    expect(commands[0]).toEqual(['loadfile', 'http://example.com/track.mp3', 'append-play']);
+  });
+
+  test('setPause sends set_property', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.setPause(true);
+    expect(commands[0]).toEqual(['set_property', 'pause', true]);
+  });
+
+  test('togglePause sends cycle pause', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.togglePause();
+    expect(commands[0]).toEqual(['cycle', 'pause']);
+  });
+
+  test('seek sends relative by default', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.seek(10);
+    expect(commands[0]).toEqual(['seek', 10, 'relative']);
+  });
+
+  test('seek absolute mode', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.seek(90, 'absolute+exact');
+    expect(commands[0]).toEqual(['seek', 90, 'absolute+exact']);
+  });
+
+  test('setVolume clamps to 0', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.setVolume(-10);
+    expect(commands[0]).toEqual(['set_property', 'volume', 0]);
+  });
+
+  test('setVolume clamps to 150', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.setVolume(200);
+    expect(commands[0]).toEqual(['set_property', 'volume', 150]);
+  });
+
+  test('setVolume normal range', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.setVolume(80);
+    expect(commands[0]).toEqual(['set_property', 'volume', 80]);
+  });
+
+  test('addVolume sends add', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.addVolume(5);
+    expect(commands[0]).toEqual(['add', 'volume', 5]);
+  });
+
+  test('toggleMute sends cycle mute', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.toggleMute();
+    expect(commands[0]).toEqual(['cycle', 'mute']);
+  });
+
+  test('stop sends stop', async () => {
+    const commands: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      commands.push(msg.command);
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await ipc.stop();
+    expect(commands[0]).toEqual(['stop']);
+  });
+
+  test('getProperty returns value', async () => {
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      socket.write(JSON.stringify({ error: 'success', data: 75, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    const vol = await ipc.getProperty('volume');
+    expect(vol).toBe(75);
+  });
+
+  test('quit disconnects after sending', async () => {
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    expect(ipc.connected).toBe(true);
+    await ipc.quit();
+    expect(ipc.connected).toBe(false);
+  });
+
+  test('observeAll sends observe_property for each property', async () => {
+    const commands: unknown[][] = [];
+    onServerData = (socket, data) => {
+      const lines = data.toString().split('\n').filter(Boolean);
+      for (const line of lines) {
+        const msg = JSON.parse(line);
+        if (Array.isArray(msg.command) && msg.command[0] === 'observe_property') {
+          commands.push(msg.command);
+        }
+        socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      }
+    };
+    await ipc.connect(socketPath);
+    await ipc.observeAll();
+    expect(commands.length).toBe(OBSERVED_PROPERTIES.length);
+    for (let i = 0; i < OBSERVED_PROPERTIES.length; i++) {
+      expect(commands[i]).toEqual(['observe_property', OBSERVED_PROPERTIES[i].id, OBSERVED_PROPERTIES[i].name]);
+    }
   });
 });

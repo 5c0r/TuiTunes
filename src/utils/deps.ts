@@ -1,4 +1,5 @@
 import { Logger } from './logger';
+import { readFileSync } from 'node:fs';
 
 const MIN_MPV_VERSION = [0, 35] as const;
 
@@ -48,5 +49,21 @@ export function checkDependencies(): boolean {
     return false;
   }
 
+  // WSL2 audio guidance
+  if (isWSL()) {
+    Logger.info('WSL2 detected. Audio requires WSLg (Win11 22H2+) or manual PulseAudio setup.');
+    Logger.info('If no sound: ensure WSLg is working or configure PulseAudio forwarding.');
+  }
+
   return true;
+}
+
+/** Detect WSL2 environment via /proc/version. */
+export function isWSL(): boolean {
+  try {
+    const version = readFileSync('/proc/version', 'utf-8');
+    return /microsoft|wsl/i.test(version);
+  } catch {
+    return false;
+  }
 }

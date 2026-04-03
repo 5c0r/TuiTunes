@@ -3,13 +3,14 @@ import { unlinkSync, existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { Logger } from '../utils/logger';
+import { isWSL } from '../utils/deps';
 
 // Prefer XDG_RUNTIME_DIR (per-user tmpdir, no cleanup races),
 // fall back to /tmp with a user-scoped name.
 const runtimeDir = process.env.XDG_RUNTIME_DIR ?? os.tmpdir();
 export const SOCKET_PATH = path.join(runtimeDir, 'tuimusic-mpv.sock');
 
-const MPV_ARGS = [
+const MPV_ARGS: readonly string[] = [
   '--idle',
   '--no-video',
   '--no-terminal',
@@ -22,7 +23,9 @@ const MPV_ARGS = [
   '--demuxer-max-bytes=512KiB',
   '--demuxer-max-back-bytes=128KiB',
   '--cache-secs=10',
-] as const;
+  // WSL2: force PulseAudio output (WSLg provides PulseAudio server)
+  ...(isWSL() ? ['--ao=pulse'] : []),
+];
 
 let mpvProc: Subprocess | null = null;
 

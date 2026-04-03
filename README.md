@@ -98,7 +98,21 @@ brew install mpv yt-dlp
 
 **Windows** - See [PLATFORM.md](PLATFORM.md) for status. Currently requires Unix socket support (TCP fallback planned).
 
-### Install & Run
+**WSL2 (Windows Subsystem for Linux)**
+```bash
+# Works like native Linux. Requires WSLg (Win11 22H2+) for audio.
+sudo apt install mpv
+pip install yt-dlp
+```
+
+### Install via npm
+
+```bash
+bun install -g tui-tunes@alpha
+tui-tunes
+```
+
+### Install from Source
 
 ```bash
 git clone https://github.com/5c0r/TuiTunes.git
@@ -235,7 +249,7 @@ Data stored in:
 ```bash
 bun run start     # Launch
 bun run dev       # Watch mode (auto-restart on changes)
-bun test          # Run 92 tests
+bun test          # Run 196 tests
 bunx tsc --noEmit # Type check
 ```
 
