@@ -119,3 +119,67 @@ describe('removeFromQueue', () => {
     expect(newIndex).toBe(0);
   });
 });
+
+// These tests validate the composition pattern used in app.tsx handleNext/handlePrev.
+// The bug fix: queue[shuffledIndices[nextIndex(...)]] instead of queue[nextIndex(...)].
+describe('shuffle + next/prev composition', () => {
+  const a = track('a');
+  const b = track('b');
+  const c = track('c');
+  const queue = [a, b, c];
+  // Shuffle order: C(2), A(0), B(1) — first played is C, then A, then B
+  const shuffledIndices = [2, 0, 1];
+
+  test('next from shuffle position 0 yields second shuffle entry', () => {
+    const next = nextIndex(0, queue.length, 'off');
+    expect(next).toBe(1);
+    const trackIdx = shuffledIndices[next!];
+    expect(queue[trackIdx]).toEqual(a); // second in shuffle order is A
+  });
+
+  test('next from shuffle position 1 yields third shuffle entry', () => {
+    const next = nextIndex(1, queue.length, 'off');
+    expect(next).toBe(2);
+    const trackIdx = shuffledIndices[next!];
+    expect(queue[trackIdx]).toEqual(b); // third in shuffle order is B
+  });
+
+  test('next from last shuffle position with repeat=all wraps to first', () => {
+    const next = nextIndex(2, queue.length, 'all');
+    expect(next).toBe(0);
+    const trackIdx = shuffledIndices[next!];
+    expect(queue[trackIdx]).toEqual(c); // wraps to first in shuffle order: C
+  });
+
+  test('next from last shuffle position with repeat=off returns null', () => {
+    expect(nextIndex(2, queue.length, 'off')).toBeNull();
+  });
+
+  test('repeat=track returns same shuffle entry', () => {
+    const next = nextIndex(1, queue.length, 'track');
+    expect(next).toBe(1);
+    const trackIdx = shuffledIndices[next!];
+    expect(queue[trackIdx]).toEqual(a); // repeat same: A
+  });
+
+  test('prev from shuffle position 2 yields second shuffle entry', () => {
+    const prev = prevIndex(2, queue.length, 'off');
+    expect(prev).toBe(1);
+    const trackIdx = shuffledIndices[prev!];
+    expect(queue[trackIdx]).toEqual(a);
+  });
+
+  test('prev from shuffle position 0 with repeat=all wraps to last', () => {
+    const prev = prevIndex(0, queue.length, 'all');
+    expect(prev).toBe(2);
+    const trackIdx = shuffledIndices[prev!];
+    expect(queue[trackIdx]).toEqual(b); // last in shuffle order: B
+  });
+
+  test('without shuffle, next goes sequentially through queue', () => {
+    // This is the old (broken) pattern — direct index into queue
+    const next = nextIndex(0, queue.length, 'off');
+    expect(next).toBe(1);
+    expect(queue[next!]).toEqual(b); // sequential: A→B
+  });
+});
