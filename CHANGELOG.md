@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1-alpha.1 (2026-04-04)
+
+### New
+- Vertical layout: 7th preset (Ctrl+L), stacked top-to-bottom for narrow terminals
+- 46 command palette entries with complete shortcut coverage
+
+### Fixes
+- Keybinding sync across all sources (commands.ts, HelpOverlay, README)
+- HelpOverlay: added g/G (go to top/bottom), fixed escape description
+- Removed fragile isNarrow responsive hack in favor of explicit vertical layout
+
+### Internal
+- 205 tests, 942 expect() calls
+
 ## 0.3.0-alpha.1 (2026-04-04)
 
 ### New
