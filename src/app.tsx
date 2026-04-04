@@ -685,7 +685,18 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
       return;
     }
 
-    // Lyrics toggle
+    // Load more — Shift+L. Must be checked before lowercase 'l' (lyrics)
+    // because Kitty protocol reports key.name='l' + key.shift=true for Shift+L.
+    if (key.name === 'L' || (key.name === 'l' && key.shift)) {
+      if (section === 'music' && musicView === 'search' && searchHasMore) {
+        void handleLoadMore();
+      } else if (section === 'podcast' && podcastView === 'episodes' && hasMoreEpisodes) {
+        setEpisodePageSize((prev) => prev + 50);
+      }
+      return;
+    }
+
+    // Lyrics toggle — plain 'l' without shift
     if (key.name === 'l') {
       setLyricsVisible((v: boolean) => !v);
       return;
@@ -695,16 +706,6 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     if (key.name === 't') {
       setSeekInputVisible(true);
       setSeekInputValue('');
-      return;
-    }
-
-    // Load more search results (max 2 pages) — Shift+L
-    if (key.name === 'L') {
-      if (section === 'music' && musicView === 'search' && searchHasMore) {
-        void handleLoadMore();
-      } else if (section === 'podcast' && podcastView === 'episodes' && hasMoreEpisodes) {
-        setEpisodePageSize((prev) => prev + 50);
-      }
       return;
     }
 
