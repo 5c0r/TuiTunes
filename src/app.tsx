@@ -867,12 +867,14 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     </box>
   );
 
+  const isVertical = layout === 'vertical';
   const mainPanel = (
-    <box flexGrow={1} flexDirection="row">
+    <box flexGrow={1} flexDirection={isVertical ? 'column' : 'row'}>
       {/* Track list: shrinks when lyrics/transcript panel is open */}
       <box
         flexGrow={lyricsVisible ? 0 : 1}
-        width={lyricsVisible ? '35%' : undefined}
+        width={lyricsVisible && !isVertical ? '35%' : undefined}
+        height={lyricsVisible && isVertical ? '50%' : undefined}
         flexDirection="column"
         border borderStyle="rounded"
         borderColor={focusedPanel === 'main' ? ACCENT : DIM}
@@ -884,7 +886,7 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
           </box>
         ) : section === 'podcast' && podcastListJsx ? podcastListJsx : trackListJsx}
       </box>
-      {/* Lyrics/Transcript: takes remaining ~65% */}
+      {/* Lyrics/Transcript: remaining space */}
       {lyricsVisible && (section === 'podcast' ? <Transcript /> : <Lyrics />)}
     </box>
   );
