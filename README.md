@@ -148,7 +148,7 @@ bun run start
 | `Ctrl+T` | Cycle theme |
 | `Ctrl+1` | Music section |
 | `Ctrl+2` | Podcast section |
-| `Ctrl+Q` | Quit |
+| `Ctrl+Q` / `Ctrl+C` | Quit |
 
 ### Playback
 

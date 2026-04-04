@@ -11,7 +11,7 @@ const VALID_CATEGORIES = ['playback', 'navigation', 'queue', 'view', 'app'] as c
 
 describe('COMMANDS', () => {
   test('has expected length', () => {
-    expect(COMMANDS.length).toBe(37);
+    expect(COMMANDS.length).toBe(45);
   });
 
   test('all have required fields', () => {
