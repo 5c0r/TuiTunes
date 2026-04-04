@@ -34,6 +34,7 @@ export const COMMANDS: Command[] = [
   { id: 'layout-split', name: 'Split Layout', description: 'Queue left, results right', category: 'view' },
   { id: 'layout-wide', name: 'Wide Layout', description: 'Extended now playing', category: 'view' },
   { id: 'layout-focus', name: 'Focus Layout', description: 'Distraction free', category: 'view' },
+  { id: 'layout-vertical', name: 'Vertical Layout', description: 'Stacked top-to-bottom, narrow-friendly', category: 'view' },
   { id: 'lyrics', name: 'Toggle Lyrics', description: 'Show/hide synced lyrics', shortcut: 'l', category: 'view' },
   { id: 'load-more', name: 'Load More', description: 'Load next page of results', shortcut: 'shift+l', category: 'navigation' },
   { id: 'favorite', name: 'Toggle Favorite', description: 'Save/unsave selected track', shortcut: 'f', category: 'queue' },

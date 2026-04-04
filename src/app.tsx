@@ -489,6 +489,7 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
       case 'layout-split': setLayout('split'); break;
       case 'layout-wide': setLayout('wide'); break;
       case 'layout-focus': setLayout('focus'); break;
+      case 'layout-vertical': setLayout('vertical'); break;
       case 'layout-cycle': setLayout((prev) => nextLayout(prev)); break;
       case 'theme-cycle': setThemeName((prev) => nextTheme(prev)); break;
       case 'section-music': setSection('music'); break;
@@ -904,8 +905,6 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     <Header focused={focusedPanel === 'search'} section={section} onSearch={handleSearch} onSectionChange={setSection} />
   );
 
-  // Responsive: stack vertically when terminal is too narrow for side-by-side
-  const isNarrow = (process.stdout.columns ?? 100) < 80;
 
   // -- Layout rendering --
   return (
@@ -944,7 +943,7 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
             </box>
           ) : layout === 'split' ? (
             /* Split: queue left, results right */
-            <box flexDirection={isNarrow ? 'column' : 'row'} flexGrow={1}>
+            <box flexDirection="row" flexGrow={1}>
               <box flexGrow={1} flexDirection="column" border borderStyle="rounded"
                 borderColor={focusedPanel === 'sidebar' ? ACCENT : DIM} title="Queue">
                 <TrackList
@@ -964,9 +963,14 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
             <box flexGrow={1} flexDirection="column">
               {trackListJsx}
             </box>
+          ) : layout === 'vertical' ? (
+            /* Vertical: header + full-width main + footer, no sidebar */
+            <box flexGrow={1} flexDirection="column">
+              {mainPanel}
+            </box>
           ) : (
             /* Default / Compact */
-            <box flexDirection={isNarrow ? 'column' : 'row'} flexGrow={1}>
+            <box flexDirection="row" flexGrow={1}>
               {layout === 'default' && sidebarJsx}
               {mainPanel}
             </box>

@@ -23,8 +23,8 @@ import {
 } from '../../src/ui/themes';
 
 describe('layouts', () => {
-  test('LAYOUT_ORDER has 6 entries', () => {
-    expect(LAYOUT_ORDER).toHaveLength(6);
+  test('LAYOUT_ORDER has 7 entries', () => {
+    expect(LAYOUT_ORDER).toHaveLength(7);
   });
 
   test('LAYOUT_ORDER starts with default', () => {
@@ -33,14 +33,18 @@ describe('layouts', () => {
 
   test('nextLayout cycles through all layouts', () => {
     let current: LayoutPreset = 'default';
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       current = nextLayout(current);
     }
     expect(current).toBe('default');
   });
 
-  test('nextLayout wraps from focus to default', () => {
-    expect(nextLayout('focus')).toBe('default');
+  test('nextLayout wraps from vertical to default', () => {
+    expect(nextLayout('vertical')).toBe('default');
+  });
+
+  test('nextLayout focus to vertical', () => {
+    expect(nextLayout('focus')).toBe('vertical');
   });
 
   test('LAYOUT_LABELS has entry for every layout', () => {

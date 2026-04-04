@@ -1,7 +1,7 @@
-export type LayoutPreset = 'default' | 'compact' | 'minimal' | 'split' | 'wide' | 'focus';
+export type LayoutPreset = 'default' | 'compact' | 'minimal' | 'split' | 'wide' | 'focus' | 'vertical';
 
 export const LAYOUT_ORDER: LayoutPreset[] = [
-  'default', 'compact', 'minimal', 'split', 'wide', 'focus',
+  'default', 'compact', 'minimal', 'split', 'wide', 'focus', 'vertical',
 ];
 
 export function nextLayout(current: LayoutPreset): LayoutPreset {
@@ -16,6 +16,7 @@ export const LAYOUT_LABELS: Record<LayoutPreset, string> = {
   split: 'Split',
   wide: 'Wide',
   focus: 'Focus',
+  vertical: 'Vertical',
 };
 
 export const LAYOUT_DESCRIPTIONS: Record<LayoutPreset, string> = {
@@ -25,4 +26,5 @@ export const LAYOUT_DESCRIPTIONS: Record<LayoutPreset, string> = {
   split: 'Queue left, results right',
   wide: 'Extended now playing',
   focus: 'Distraction free',
+  vertical: 'Stacked top-to-bottom, narrow-friendly',
 };
