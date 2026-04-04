@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
@@ -173,7 +173,7 @@ export function Transcript() {
         {paragraphs.map((para, paraIdx) => {
           const isPast = currentParaIdx >= 0 && paraIdx < currentParaIdx;
           const isCurrent = currentParaIdx === paraIdx;
-          const isFuture = currentParaIdx >= 0 && paraIdx > currentParaIdx;
+          const _isFuture = currentParaIdx >= 0 && paraIdx > currentParaIdx;
           const currentSegIdx = isCurrent ? findCurrentSegment(para.segments, position) : -1;
 
           // Paragraph-level color

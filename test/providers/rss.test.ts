@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'bun:test';
-import { mkdirSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { parseFeed } from '../../src/providers/rss';
 
 mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });

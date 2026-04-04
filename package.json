@@ -36,7 +36,10 @@
     "start": "bun run src/index.tsx",
     "dev": "bun --watch run src/index.tsx",
     "build": "bun build --compile --minify src/index.tsx --outfile dist/tuimusic",
-    "lint": "bunx tsc --noEmit",
+    "lint": "bunx tsc --noEmit && bunx biome lint src/ test/",
+    "lint:fix": "bunx biome lint --fix src/ test/",
+    "format": "bunx biome format --write src/ test/",
+    "check": "bunx biome check src/ test/",
     "test": "bun test"
   },
   "dependencies": {
@@ -48,6 +51,7 @@
     "youtubei.js": "^17.0.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
     "@types/bun": "^1.2.12",
     "@types/react": "^19.2.14",
     "react-devtools-core": "^7.0.1",

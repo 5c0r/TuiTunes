@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
 import type { Track } from '../providers/types';
@@ -20,7 +20,7 @@ export interface TrackListProps {
 export function TrackList({
   tracks,
   selectedIndex,
-  onPlay,
+  onPlay: _onPlay,
   playingTrackId,
   showRemoveHint,
 }: TrackListProps) {

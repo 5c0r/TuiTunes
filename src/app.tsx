@@ -1,9 +1,10 @@
 import { TextAttributes, type KeyEvent, type ScrollBoxRenderable } from '@opentui/core';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Provider, useAtomValue, useSetAtom } from 'jotai';
 import type { Store } from 'jotai/vanilla/store';
 import { useKeyboard } from '@opentui/react';
-import { PlayerController } from './player/controller';
+import type { PlayerController } from './player/controller';
 import { playerTrackAtom } from './store/player';
 import {
   searchResultsAtom,
@@ -17,7 +18,6 @@ import {
   searchPageAtom,
   searchHasMoreAtom,
   searchContinuationAtom,
-  type Section,
   type MusicView,
   type PodcastView,
 } from './store/ui';
@@ -35,7 +35,6 @@ import { QuitConfirm } from './ui/QuitConfirm';
 import { CommandPalette } from './ui/CommandPalette';
 import { useTheme } from './ui/useTheme';
 import { nextTheme } from './ui/themes';
-import { LAYOUT_LABELS } from './ui/layouts';
 import { filterCommands } from './commands';
 import { Lyrics } from './ui/Lyrics';
 import { Transcript } from './ui/Transcript';
@@ -82,7 +81,7 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
   const setMusicView = useSetAtom(musicViewAtom);
   const layout = useAtomValue(layoutAtom);
   const setLayout = useSetAtom(layoutAtom);
-  const themeName = useAtomValue(themeNameAtom);
+  const _themeName = useAtomValue(themeNameAtom);
   const setThemeName = useSetAtom(themeNameAtom);
 
   // Player state (for playing indicator)
@@ -492,7 +491,9 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
       case 'layout-focus': setLayout('focus'); break;
     }
   }, [controller, handleNext, handlePrev, handleToggleShuffle, handleCycleRepeat,
-      setFocusedPanel, setSection, setMusicView, setPodcastView, refreshLibraryView, onQuit, setLayout, setThemeName, setQuitConfirmVisible]);
+      setFocusedPanel, setSection, setMusicView, setPodcastView, refreshLibraryView,
+      setLayout, setLyricsVisible, setTranscriptSource, setLyricsLoading,
+      selectedPodcast, setSubscribedFeeds, setLyricsData]);
 
   // -- Global keybindings --
   useKeyboard((key: KeyEvent) => {

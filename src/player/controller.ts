@@ -1,7 +1,7 @@
 import type { Store } from 'jotai/vanilla/store';
 import { MpvIPC } from './ipc';
 import { spawnMpv, killMpv, SOCKET_PATH } from './process';
-import type { MpvEvent, PlayerState } from './types';
+import type { MpvEvent, } from './types';
 import type { Track } from '../providers/types';
 import { getDb } from '../db/index';
 import { addToHistory } from '../db/queries';

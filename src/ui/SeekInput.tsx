@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
 import { useTheme } from './useTheme';
@@ -27,7 +27,7 @@ export function parseTimeInput(input: string): number | null {
 
   // m:ss or h:mm:ss
   const parts = trimmed.split(':').map(Number);
-  if (parts.some(isNaN)) return null;
+  if (parts.some(Number.isNaN)) return null;
 
   if (parts.length === 2) {
     return parts[0] * 60 + parts[1];

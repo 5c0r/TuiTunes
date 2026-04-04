@@ -29,7 +29,7 @@ function parseDuration(raw: string): number {
   if (!trimmed) return 0;
   if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
   const parts = trimmed.split(':').map(Number);
-  if (parts.some(isNaN)) return 0;
+  if (parts.some(Number.isNaN)) return 0;
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return 0;
@@ -69,9 +69,10 @@ function simpleHash(input: string): string {
 export function parseFeed(xml: string, podcastId: string, podcastTitle: string): Episode[] {
   const episodes: Episode[] = [];
   const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
-  let itemMatch: RegExpExecArray | null;
 
-  while ((itemMatch = itemRegex.exec(xml)) !== null) {
+  for (;;) {
+    const itemMatch = itemRegex.exec(xml);
+    if (!itemMatch) break;
     const itemXml = itemMatch[1];
 
     // Audio URL from enclosure is required — skip episodes without one
@@ -89,7 +90,7 @@ export function parseFeed(xml: string, podcastId: string, podcastTitle: string):
     let publishDate = '';
     if (pubDate) {
       const parsed = new Date(pubDate);
-      publishDate = isNaN(parsed.getTime()) ? pubDate : parsed.toISOString();
+      publishDate = Number.isNaN(parsed.getTime()) ? pubDate : parsed.toISOString();
     }
 
     const rawDesc = extractTag(itemXml, 'description');

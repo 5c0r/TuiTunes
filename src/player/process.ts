@@ -1,4 +1,4 @@
-import { type Subprocess } from 'bun';
+import type { Subprocess } from 'bun';
 import { unlinkSync, existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';

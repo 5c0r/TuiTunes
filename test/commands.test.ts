@@ -1,12 +1,11 @@
 import { describe, test, expect } from 'bun:test';
-import { mkdirSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
 
 import { COMMANDS, filterCommands } from '../src/commands';
-import type { Command } from '../src/commands';
 
 const VALID_CATEGORIES = ['playback', 'navigation', 'queue', 'view', 'app'] as const;
 

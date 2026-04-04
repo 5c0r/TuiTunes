@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from './useTheme';
 import type { Section, MusicView, PodcastView } from '../store/ui';

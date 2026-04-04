@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { TextAttributes } from '@opentui/core';
 import { filterCommands } from '../commands';
 import type { Command } from '../commands';

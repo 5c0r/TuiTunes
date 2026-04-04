@@ -11,10 +11,10 @@ export function parseSrt(text: string): LyricLine[] {
     const timeMatch = parts[1].match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);
     if (!timeMatch) continue;
     const time =
-      parseInt(timeMatch[1]) * 3600 +
-      parseInt(timeMatch[2]) * 60 +
-      parseInt(timeMatch[3]) +
-      parseInt(timeMatch[4]) / 1000;
+      parseInt(timeMatch[1], 10) * 3600 +
+      parseInt(timeMatch[2], 10) * 60 +
+      parseInt(timeMatch[3], 10) +
+      parseInt(timeMatch[4], 10) / 1000;
     const lineText = parts.slice(2).join(' ').replace(/<[^>]+>/g, '').trim();
     if (lineText) lines.push({ time, text: lineText });
   }
@@ -43,10 +43,10 @@ export function parseVtt(text: string): LyricLine[] {
     const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
     if (!timeMatch) continue;
     const time =
-      parseInt(timeMatch[1]) * 3600 +
-      parseInt(timeMatch[2]) * 60 +
-      parseInt(timeMatch[3]) +
-      parseInt(timeMatch[4]) / 1000;
+      parseInt(timeMatch[1], 10) * 3600 +
+      parseInt(timeMatch[2], 10) * 60 +
+      parseInt(timeMatch[3], 10) +
+      parseInt(timeMatch[4], 10) / 1000;
     const lineText = parts.slice(textStartIdx).join(' ').replace(/<[^>]+>/g, '').trim();
     if (lineText) lines.push({ time, text: lineText });
   }

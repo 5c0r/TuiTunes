@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from './useTheme';
 import type { Section } from '../store/ui';
@@ -10,7 +10,7 @@ export interface HeaderProps {
   onSectionChange: (section: Section) => void;
 }
 
-export function Header({ focused, section, onSearch, onSectionChange }: HeaderProps) {
+export function Header({ focused, section, onSearch, onSectionChange: _onSectionChange }: HeaderProps) {
   const t = useTheme();
   const placeholder = section === 'podcast' ? 'Search podcasts...' : 'Search music...';
 

@@ -1,6 +1,6 @@
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { unlink } from 'fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { unlink } from 'node:fs/promises';
 import type { LyricLine } from './lyrics';
 import type { Episode } from './podcast-types';
 import { parseSrt, parseVtt } from './subtitle-parser';

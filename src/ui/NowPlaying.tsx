@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from './useTheme';

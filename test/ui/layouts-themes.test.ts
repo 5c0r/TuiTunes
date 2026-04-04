@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'bun:test';
-import { mkdirSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
 
@@ -99,7 +99,7 @@ describe('themes', () => {
   });
 
   test('getTheme returns same object as THEMES', () => {
-    expect(getTheme('nord')).toBe(THEMES['nord']);
+    expect(getTheme('nord')).toBe(THEMES.nord);
   });
 
   test('all theme colors are hex strings', () => {
