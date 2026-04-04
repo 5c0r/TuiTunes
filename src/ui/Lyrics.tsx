@@ -35,6 +35,26 @@ export function Lyrics() {
   const data = useAtomValue(lyricsDataAtom);
   const loading = useAtomValue(lyricsLoadingAtom);
   const position = useAtomValue(playerPositionAtom);
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+
+  // Compute current line BEFORE early returns so the effect always has it.
+  // When data is absent, currentIdx stays -1 and the effect is a no-op.
+  const currentIdx = data?.synced ? findCurrentLine(data.lines, position) : -1;
+
+  // Auto-scroll: center the active line at ~40% from viewport top.
+  // Uses <box id="lyric-N"> wrappers (not <text>) because box elements
+  // have reliable layout positions for findDescendantById.
+  useEffect(() => {
+    const sb = scrollRef.current;
+    if (!sb || currentIdx < 0) return;
+
+    const child = sb.content.findDescendantById(`lyric-${currentIdx}`);
+    if (!child) return;
+
+    const viewportH = sb.viewport.height;
+    const targetScroll = Math.max(0, child.y - Math.floor(viewportH * 0.4));
+    sb.scrollTop = targetScroll;
+  }, [currentIdx]);
 
   if (loading) {
     return (
@@ -66,22 +86,6 @@ export function Lyrics() {
     );
   }
 
-  const currentIdx = data.synced ? findCurrentLine(data.lines, position) : -1;
-  const scrollRef = useRef<ScrollBoxRenderable>(null);
-
-  // Auto-scroll to keep the current lyric line centered in the viewport
-  useEffect(() => {
-    const sb = scrollRef.current;
-    if (!sb || currentIdx < 0) return;
-
-    const child = sb.content.findDescendantById(`lyric-${currentIdx}`);
-    if (!child) return;
-
-    const viewportH = sb.viewport.height;
-    const targetScroll = Math.max(0, child.y - Math.floor(viewportH * 0.4));
-    sb.scrollTop = targetScroll;
-  }, [currentIdx]);
-
   return (
     <box
       border
@@ -101,14 +105,14 @@ export function Lyrics() {
             const ts = `[${formatTimestamp(line.time)}]`;
 
             return (
-              <text
-                key={i}
-                id={`lyric-${i}`}
-                fg={color}
-                attributes={isCurrent ? TextAttributes.BOLD : 0}
-              >
-                {ts} {marker}{line.text}
-              </text>
+              <box key={i} id={`lyric-${i}`}>
+                <text
+                  fg={color}
+                  attributes={isCurrent ? TextAttributes.BOLD : 0}
+                >
+                  {ts} {marker}{line.text}
+                </text>
+              </box>
             );
           }
 

@@ -98,9 +98,10 @@ export function Transcript() {
     ? findCurrentSegment(paragraphs[currentParaIdx].segments, position)
     : -1;
 
-  // Auto-scroll to keep current paragraph centered in viewport.
-  // Depends on both paragraph and segment so we re-center as the
-  // active phrase advances through a long paragraph.
+  // Auto-scroll: keep the active portion of the current paragraph visible.
+  // For tall paragraphs (many segments), estimate vertical offset within
+  // the paragraph based on segment progress so the highlighted phrase
+  // stays near the center of the viewport.
   useEffect(() => {
     const sb = scrollRef.current;
     if (!sb || currentParaIdx < 0) return;
@@ -108,11 +109,24 @@ export function Transcript() {
     const child = sb.content.findDescendantById(`para-${currentParaIdx}`);
     if (!child) return;
 
-    // Center: place the child's top at ~40% from viewport top
     const viewportH = sb.viewport.height;
-    const targetScroll = Math.max(0, child.y - Math.floor(viewportH * 0.4));
+    const para = paragraphs[currentParaIdx];
+    const segCount = para ? para.segments.length : 1;
+
+    // Fraction through the paragraph (0 at start, 1 at end)
+    const segProgress = segCount > 1 && currentSegIdx >= 0
+      ? currentSegIdx / (segCount - 1)
+      : 0;
+
+    // Offset within the paragraph box proportional to segment progress
+    const intraParaOffset = Math.floor(child.height * segProgress);
+
+    // Target: place the active region at ~40% from viewport top
+    const targetScroll = Math.max(0,
+      child.y + intraParaOffset - Math.floor(viewportH * 0.4),
+    );
     sb.scrollTop = targetScroll;
-  }, [currentParaIdx, currentSegIdx]);
+  }, [currentParaIdx, currentSegIdx, paragraphs]);
 
   if (loading) {
     return (
