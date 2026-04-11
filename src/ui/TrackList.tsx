@@ -65,7 +65,7 @@ export function TrackList({
   }
 
   return (
-    <scrollbox ref={scrollRef} stickyScroll stickyStart="top">
+    <scrollbox ref={scrollRef}>
       {tracks.map((track, i) => {
         const selected = i === selectedIndex;
         const playing = track.id === playingTrackId;
@@ -90,22 +90,25 @@ export function TrackList({
           >
             <box flexDirection="row">
               <text fg={selected ? iconColor : t.dim} attributes={bold}>
-                {num}  {icon}
+                {num} {icon}
               </text>
               <text fg={titleColor} attributes={bold} truncate flexGrow={1}>
                 {track.title}
               </text>
               {playing && (
-                <text fg={t.green} attributes={TextAttributes.BOLD}> ♪ </text>
+                <text fg={t.green} attributes={TextAttributes.BOLD}>
+                  {' '}
+                  ♪{' '}
+                </text>
               )}
               <text fg={t.dim}> {dur}</text>
-              {selected && showRemoveHint && (
-                <text fg={t.red}> [x]</text>
-              )}
+              {selected && showRemoveHint && <text fg={t.red}> [x]</text>}
             </box>
             <box flexDirection="row">
               <text fg={metaColor}>
-                {'      '}{track.artist}{track.album ? ` — ${track.album}` : ''}
+                {'      '}
+                {track.artist}
+                {track.album ? ` — ${track.album}` : ''}
               </text>
             </box>
           </box>

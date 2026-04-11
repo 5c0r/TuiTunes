@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
@@ -90,13 +90,19 @@ export function Transcript() {
   const position = useAtomValue(playerPositionAtom);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
-  const paragraphs = data?.synced ? groupIntoParagraphs(data.lines) : [];
+  // Memoize paragraphs so the array reference is stable across renders.
+  // Only recompute when the underlying lyric lines change.
+  const paragraphs = useMemo(() => (data?.synced ? groupIntoParagraphs(data.lines) : []), [data]);
+
   const currentParaIdx = paragraphs.length > 0 ? findCurrentParagraph(paragraphs, position) : -1;
   // Track the active segment within the current paragraph so scroll updates
   // as phrases progress, not only when the paragraph changes.
-  const currentSegIdx = currentParaIdx >= 0
-    ? findCurrentSegment(paragraphs[currentParaIdx].segments, position)
-    : -1;
+  const currentSegIdx =
+    currentParaIdx >= 0 ? findCurrentSegment(paragraphs[currentParaIdx].segments, position) : -1;
+
+  // Track previous paragraph+segment to avoid redundant scroll updates.
+  const prevParaRef = useRef(-1);
+  const prevSegRef = useRef(-1);
 
   // Auto-scroll: keep the active portion of the current paragraph visible.
   // For tall paragraphs (many segments), estimate vertical offset within
@@ -106,6 +112,11 @@ export function Transcript() {
     const sb = scrollRef.current;
     if (!sb || currentParaIdx < 0) return;
 
+    // Skip if neither paragraph nor segment changed.
+    if (currentParaIdx === prevParaRef.current && currentSegIdx === prevSegRef.current) return;
+    prevParaRef.current = currentParaIdx;
+    prevSegRef.current = currentSegIdx;
+
     const child = sb.content.findDescendantById(`para-${currentParaIdx}`);
     if (!child) return;
 
@@ -114,24 +125,26 @@ export function Transcript() {
     const segCount = para ? para.segments.length : 1;
 
     // Fraction through the paragraph (0 at start, 1 at end)
-    const segProgress = segCount > 1 && currentSegIdx >= 0
-      ? currentSegIdx / (segCount - 1)
-      : 0;
+    const segProgress = segCount > 1 && currentSegIdx >= 0 ? currentSegIdx / (segCount - 1) : 0;
 
     // Offset within the paragraph box proportional to segment progress
     const intraParaOffset = Math.floor(child.height * segProgress);
 
     // Target: place the active region at ~40% from viewport top
-    const targetScroll = Math.max(0,
-      child.y + intraParaOffset - Math.floor(viewportH * 0.4),
-    );
+    const targetScroll = Math.max(0, child.y + intraParaOffset - Math.floor(viewportH * 0.4));
     sb.scrollTop = targetScroll;
   }, [currentParaIdx, currentSegIdx, paragraphs]);
 
   if (loading) {
     return (
-      <box border borderStyle="rounded" borderColor={t.border}
-        title="Transcript" flexGrow={1} paddingLeft={1}>
+      <box
+        border
+        borderStyle="rounded"
+        borderColor={t.border}
+        title="Transcript"
+        flexGrow={1}
+        paddingLeft={1}
+      >
         <text fg={t.dim}>Loading transcript...</text>
       </box>
     );
@@ -139,8 +152,14 @@ export function Transcript() {
 
   if (!data || data.lines.length === 0) {
     return (
-      <box border borderStyle="rounded" borderColor={t.border}
-        title="Transcript" flexGrow={1} paddingLeft={1}>
+      <box
+        border
+        borderStyle="rounded"
+        borderColor={t.border}
+        title="Transcript"
+        flexGrow={1}
+        paddingLeft={1}
+      >
         <text fg={t.dim}>No transcript available</text>
       </box>
     );
@@ -149,8 +168,14 @@ export function Transcript() {
   // Unsynced: plain flowing text
   if (!data.synced) {
     return (
-      <box border borderStyle="rounded" borderColor={t.border}
-        title="Transcript" flexGrow={1} flexDirection="column">
+      <box
+        border
+        borderStyle="rounded"
+        borderColor={t.border}
+        title="Transcript"
+        flexGrow={1}
+        flexDirection="column"
+      >
         <scrollbox ref={scrollRef}>
           <text fg={t.fg} wrapMode="word" paddingLeft={1} paddingRight={1}>
             {data.lines.map((l) => l.text).join(' ')}
@@ -158,7 +183,8 @@ export function Transcript() {
         </scrollbox>
         <box paddingLeft={1}>
           <text fg={t.border} attributes={TextAttributes.DIM}>
-            Source: {data.source}{data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
+            Source: {data.source}
+            {data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
           </text>
         </box>
       </box>
@@ -167,8 +193,14 @@ export function Transcript() {
 
   // Synced: paragraph-level highlighting with inline phrase accent
   return (
-    <box border borderStyle="rounded" borderColor={t.accent}
-      title="Transcript" flexGrow={1} flexDirection="column">
+    <box
+      border
+      borderStyle="rounded"
+      borderColor={t.accent}
+      title="Transcript"
+      flexGrow={1}
+      flexDirection="column"
+    >
       <scrollbox ref={scrollRef}>
         {paragraphs.map((para, paraIdx) => {
           const isPast = currentParaIdx >= 0 && paraIdx < currentParaIdx;
@@ -180,9 +212,13 @@ export function Transcript() {
           const paraColor = isCurrent ? t.fg : isPast ? t.dim : t.border;
 
           return (
-            <box key={paraIdx} id={`para-${paraIdx}`}
-              paddingLeft={2} paddingRight={2}
-              paddingTop={1} paddingBottom={1}
+            <box
+              key={paraIdx}
+              id={`para-${paraIdx}`}
+              paddingLeft={2}
+              paddingRight={2}
+              paddingTop={1}
+              paddingBottom={1}
               marginBottom={1}
               backgroundColor={isCurrent ? t.selection : undefined}
             >
@@ -212,7 +248,8 @@ export function Transcript() {
       {/* Source attribution */}
       <box paddingLeft={1}>
         <text fg={t.border} attributes={TextAttributes.DIM}>
-          Source: {data.source}{data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
+          Source: {data.source}
+          {data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
         </text>
       </box>
     </box>

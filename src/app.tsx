@@ -22,7 +22,14 @@ import {
   type PodcastView,
 } from './store/ui';
 import { nextLayout } from './ui/layouts';
-import { queueAtom, queueIndexAtom, repeatAtom, shuffleAtom, shuffledIndicesAtom, playingFromQueueAtom } from './store/queue';
+import {
+  queueAtom,
+  queueIndexAtom,
+  repeatAtom,
+  shuffleAtom,
+  shuffledIndicesAtom,
+  playingFromQueueAtom,
+} from './store/queue';
 import type { Track } from './providers/types';
 import { getActiveProvider } from './providers/registry';
 import { nextIndex, prevIndex, shuffleIndices, removeFromQueue } from './store/queue-actions';
@@ -40,15 +47,23 @@ import { Lyrics } from './ui/Lyrics';
 import { Transcript } from './ui/Transcript';
 import { SeekInput, parseTimeInput } from './ui/SeekInput';
 import { TranscriptUrlInput } from './ui/TranscriptUrlInput';
-import { lyricsVisibleAtom, lyricsDataAtom, lyricsLoadingAtom, transcriptSourceAtom } from './store/lyrics';
+import {
+  lyricsVisibleAtom,
+  lyricsDataAtom,
+  lyricsLoadingAtom,
+  transcriptSourceAtom,
+} from './store/lyrics';
 import { fetchLyrics } from './providers/lyrics';
 import { podcastProvider } from './providers/podcast';
 import { fetchTranscript } from './providers/transcript';
 import { findYouTubeVideoId, youtubeUrl, extractYouTubeSrt } from './providers/podcast-youtube';
 import { parseSrt, parseVtt } from './providers/subtitle-parser';
 import {
-  podcastSearchResultsAtom, podcastSearchLoadingAtom,
-  selectedPodcastAtom, podcastEpisodesAtom, episodesLoadingAtom,
+  podcastSearchResultsAtom,
+  podcastSearchLoadingAtom,
+  selectedPodcastAtom,
+  podcastEpisodesAtom,
+  episodesLoadingAtom,
   subscribedFeedsAtom,
 } from './store/podcast';
 import { subscribeFeed, unsubscribeFeed, getSubscribedFeeds, isSubscribed } from './db/queries';
@@ -71,7 +86,13 @@ export function App({ store, controller, onQuit }: AppProps): React.ReactNode {
   );
 }
 
-function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit: () => void }): React.ReactNode {
+function AppInner({
+  controller,
+  onQuit,
+}: {
+  controller: PlayerController;
+  onQuit: () => void;
+}): React.ReactNode {
   // UI state
   const focusedPanel = useAtomValue(focusedPanelAtom);
   const setFocusedPanel = useSetAtom(focusedPanelAtom);
@@ -181,63 +202,79 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     }
     let cancelled = false;
     setLyricsLoading(true);
-    fetchLyrics(playerTrack).then((result) => {
-      if (!cancelled) {
-        setLyricsData(result);
-        setLyricsLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setLyricsData(null);
-        setLyricsLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
+    fetchLyrics(playerTrack)
+      .then((result) => {
+        if (!cancelled) {
+          setLyricsData(result);
+          setLyricsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLyricsData(null);
+          setLyricsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [playerTrack, setLyricsData, setLyricsLoading]);
-
 
   // -- Handlers --
 
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) return;
-    setFocusedPanel('main');
-    setSelectedIndex(0);
+  const handleSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim()) return;
+      setFocusedPanel('main');
+      setSelectedIndex(0);
 
-    // Podcast search when in podcast view
-    if (section === 'podcast') {
-      setPodcastSearchLoading(true);
-      try {
-        const podcasts = await podcastProvider.searchPodcasts(query);
-        setPodcastSearchResults(podcasts);
-        setPodcastView('search');
-        Logger.info(`Podcast search '${query}': ${podcasts.length} results`);
-      } catch (err) {
-        Logger.error(`Podcast search failed: ${err}`);
-      } finally {
-        setPodcastSearchLoading(false);
+      // Podcast search when in podcast view
+      if (section === 'podcast') {
+        setPodcastSearchLoading(true);
+        try {
+          const podcasts = await podcastProvider.searchPodcasts(query);
+          setPodcastSearchResults(podcasts);
+          setPodcastView('search');
+          Logger.info(`Podcast search '${query}': ${podcasts.length} results`);
+        } catch (err) {
+          Logger.error(`Podcast search failed: ${err}`);
+        } finally {
+          setPodcastSearchLoading(false);
+        }
+        return;
       }
-      return;
-    }
 
-    // Music search (YouTube)
-    setSearchLoading(true);
-    setMusicView('search');
-    setSearchPage(1);
-    try {
-      const provider = getActiveProvider();
-      const results = await provider.search(query);
-      setSearchResults(results);
-      setSearchHasMore(results.hasMore);
-      setSearchContinuation(results.continuation ?? null);
-      Logger.info(`Search '${query}': ${results.tracks.length} results`);
-    } catch (err) {
-      Logger.error(`Search failed: ${err}`);
-    } finally {
-      setSearchLoading(false);
-    }
-  }, [section, setSearchResults, setSearchLoading, setFocusedPanel, setMusicView,
-      setSearchPage, setSearchHasMore, setSearchContinuation,
-      setPodcastSearchResults, setPodcastSearchLoading, setPodcastView]);
+      // Music search (YouTube)
+      setSearchLoading(true);
+      setMusicView('search');
+      setSearchPage(1);
+      try {
+        const provider = getActiveProvider();
+        const results = await provider.search(query);
+        setSearchResults(results);
+        setSearchHasMore(results.hasMore);
+        setSearchContinuation(results.continuation ?? null);
+        Logger.info(`Search '${query}': ${results.tracks.length} results`);
+      } catch (err) {
+        Logger.error(`Search failed: ${err}`);
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [
+      section,
+      setSearchResults,
+      setSearchLoading,
+      setFocusedPanel,
+      setMusicView,
+      setSearchPage,
+      setSearchHasMore,
+      setSearchContinuation,
+      setPodcastSearchResults,
+      setPodcastSearchLoading,
+      setPodcastView,
+    ],
+  );
 
   const handleLoadMore = useCallback(async () => {
     if (!searchHasMore || searchPage >= 2 || !searchContinuation) return;
@@ -256,32 +293,50 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     } finally {
       setSearchLoading(false);
     }
-  }, [searchHasMore, searchPage, searchContinuation, searchResults,
-      setSearchResults, setSearchLoading, setSearchPage, setSearchHasMore, setSearchContinuation]);
+  }, [
+    searchHasMore,
+    searchPage,
+    searchContinuation,
+    searchResults,
+    setSearchResults,
+    setSearchLoading,
+    setSearchPage,
+    setSearchHasMore,
+    setSearchContinuation,
+  ]);
 
-  const playTrack = useCallback(async (track: Track) => {
-    try {
-      const provider = getActiveProvider();
-      const url = await provider.getStreamUrl(track);
-      await controller.play(track, url);
-    } catch (err) {
-      Logger.error(`Play failed: ${err}`);
-    }
-  }, [controller]);
+  const playTrack = useCallback(
+    async (track: Track) => {
+      try {
+        const provider = getActiveProvider();
+        const url = await provider.getStreamUrl(track);
+        await controller.play(track, url);
+      } catch (err) {
+        Logger.error(`Play failed: ${err}`);
+      }
+    },
+    [controller],
+  );
 
   // Play a track immediately (one-off, does NOT touch the queue)
-  const handlePlayDirect = useCallback(async (track: Track) => {
-    setPlayingFromQueue(false);
-    await playTrack(track);
-  }, [playTrack, setPlayingFromQueue]);
+  const handlePlayDirect = useCallback(
+    async (track: Track) => {
+      setPlayingFromQueue(false);
+      await playTrack(track);
+    },
+    [playTrack, setPlayingFromQueue],
+  );
 
   // Play a track from the queue (sets index, marks queue-playback mode)
-  const handlePlayFromQueue = useCallback(async (track: Track) => {
-    const idx = queue.findIndex((t) => t.id === track.id);
-    if (idx >= 0) setQueueIndex(idx);
-    setPlayingFromQueue(true);
-    await playTrack(track);
-  }, [queue, setQueueIndex, playTrack, setPlayingFromQueue]);
+  const handlePlayFromQueue = useCallback(
+    async (track: Track) => {
+      const idx = queue.findIndex((t) => t.id === track.id);
+      if (idx >= 0) setQueueIndex(idx);
+      setPlayingFromQueue(true);
+      await playTrack(track);
+    },
+    [queue, setQueueIndex, playTrack, setPlayingFromQueue],
+  );
 
   // Next/prev only operate when playing from the queue
   const handleNext = useCallback(async () => {
@@ -292,7 +347,16 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     const trackIdx = shuffle ? shuffledIndices[next] : next;
     const track = queue[trackIdx];
     if (track) await playTrack(track);
-  }, [playingFromQueue, queueIndex, queue, repeat, shuffle, shuffledIndices, setQueueIndex, playTrack]);
+  }, [
+    playingFromQueue,
+    queueIndex,
+    queue,
+    repeat,
+    shuffle,
+    shuffledIndices,
+    setQueueIndex,
+    playTrack,
+  ]);
 
   // Auto-advance queue when track ends
   useEffect(() => {
@@ -307,7 +371,16 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     const trackIdx = shuffle ? shuffledIndices[prev] : prev;
     const track = queue[trackIdx];
     if (track) await playTrack(track);
-  }, [playingFromQueue, queueIndex, queue, repeat, shuffle, shuffledIndices, setQueueIndex, playTrack]);
+  }, [
+    playingFromQueue,
+    queueIndex,
+    queue,
+    repeat,
+    shuffle,
+    shuffledIndices,
+    setQueueIndex,
+    playTrack,
+  ]);
 
   const handleToggleShuffle = useCallback(() => {
     setShuffle((prev) => {
@@ -340,172 +413,308 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
   }));
   const hasMoreEpisodes = podcastEpisodes.length > episodePageSize;
 
-  const mainTracks = section === 'podcast'
-    ? (podcastView === 'episodes' ? episodesAsTracks : [])
-    : musicView === 'queue' ? queue
-    : musicView === 'library' ? favorites
-    : musicView === 'explore' ? history
-    : (searchResults?.tracks ?? []);
+  const mainTracks =
+    section === 'podcast'
+      ? podcastView === 'episodes'
+        ? episodesAsTracks
+        : []
+      : musicView === 'queue'
+        ? queue
+        : musicView === 'library'
+          ? favorites
+          : musicView === 'explore'
+            ? history
+            : (searchResults?.tracks ?? []);
 
   // Play handler: podcast episodes play their audio URL directly via mpv
-  const handlePlayEpisode = useCallback(async (track: Track) => {
-    const episode = podcastEpisodes.find((ep) => ep.id === track.id);
-    if (!episode) return;
+  const handlePlayEpisode = useCallback(
+    async (track: Track) => {
+      const episode = podcastEpisodes.find((ep) => ep.id === track.id);
+      if (!episode) return;
 
-    // Try YouTube first: same source for audio + transcript = perfect sync
-    setLyricsLoading(true);
-    const videoId = await findYouTubeVideoId(episode);
+      // Try YouTube first: same source for audio + transcript = perfect sync
+      setLyricsLoading(true);
+      const videoId = await findYouTubeVideoId(episode);
 
-    if (videoId) {
-      // Play YouTube version (audio only via yt-dlp)
-      const ytUrl = youtubeUrl(videoId);
-      await controller.play(track, ytUrl);
+      if (videoId) {
+        // Play YouTube version (audio only via yt-dlp)
+        const ytUrl = youtubeUrl(videoId);
+        await controller.play(track, ytUrl);
 
-      // Extract captions from the same video
-      const result = await extractYouTubeSrt(videoId);
-      if (result) {
-        const lines = parseSrt(result.srt);
-        setLyricsData({ lines, synced: true, source: 'youtube', sourceUrl: result.videoUrl });
-      } else {
-        setLyricsData(null);
-      }
-      setLyricsLoading(false);
-    } else {
-      // Fallback: play RSS audio, try to find transcript separately
-      const url = podcastProvider.getStreamUrl(episode);
-      await controller.play(track, url);
-
-      try {
-        const transcript = await fetchTranscript(episode);
-        if (transcript) {
-          setLyricsData({ lines: transcript.lines, synced: true, source: transcript.source, sourceUrl: transcript.sourceUrl });
+        // Extract captions from the same video
+        const result = await extractYouTubeSrt(videoId);
+        if (result) {
+          const lines = parseSrt(result.srt);
+          setLyricsData({ lines, synced: true, source: 'youtube', sourceUrl: result.videoUrl });
         } else {
           setLyricsData(null);
         }
-      } catch {
-        setLyricsData(null);
-      } finally {
         setLyricsLoading(false);
-      }
-    }
-  }, [podcastEpisodes, controller, setLyricsLoading, setLyricsData]);
+      } else {
+        // Fallback: play RSS audio, try to find transcript separately
+        const url = podcastProvider.getStreamUrl(episode);
+        await controller.play(track, url);
 
-  const mainOnPlay = section === 'podcast' ? handlePlayEpisode
-    : musicView === 'queue' ? handlePlayFromQueue
-    : handlePlayDirect;
+        try {
+          const transcript = await fetchTranscript(episode);
+          if (transcript) {
+            setLyricsData({
+              lines: transcript.lines,
+              synced: true,
+              source: transcript.source,
+              sourceUrl: transcript.sourceUrl,
+            });
+          } else {
+            setLyricsData(null);
+          }
+        } catch {
+          setLyricsData(null);
+        } finally {
+          setLyricsLoading(false);
+        }
+      }
+    },
+    [podcastEpisodes, controller, setLyricsLoading, setLyricsData],
+  );
+
+  const mainOnPlay =
+    section === 'podcast'
+      ? handlePlayEpisode
+      : musicView === 'queue'
+        ? handlePlayFromQueue
+        : handlePlayDirect;
 
   // Items visible in the main panel — unified for navigation
-  const podcastListItems = section === 'podcast' && podcastView !== 'episodes'
-    ? (podcastView === 'search' ? podcastSearchResults : subscribedFeeds)
-    : [];
-  const visibleListLength = podcastListItems.length > 0 ? podcastListItems.length : mainTracks.length;
+  const podcastListItems =
+    section === 'podcast' && podcastView !== 'episodes'
+      ? podcastView === 'search'
+        ? podcastSearchResults
+        : subscribedFeeds
+      : [];
+  const visibleListLength =
+    podcastListItems.length > 0 ? podcastListItems.length : mainTracks.length;
 
-  // Page-based scroll for podcast list
+  // Smooth follow scroll for podcast list: match TrackList behavior
   useEffect(() => {
     const sb = podcastScrollRef.current;
     if (!sb || podcastListItems.length === 0) return;
     const child = sb.content.findDescendantById(`podcast-row-${selectedIndex}`);
     if (!child) return;
     const viewTop = sb.scrollTop;
-    const viewBottom = viewTop + sb.viewport.height;
-    if (child.y + child.height > viewBottom) sb.scrollTop = child.y;
-    else if (child.y < viewTop) sb.scrollTop = child.y;
+    const viewHeight = sb.viewport.height;
+    const viewBottom = viewTop + viewHeight;
+    const childTop = child.y;
+    const childBottom = child.y + child.height;
+    // Selection below visible area → scroll to show at bottom edge
+    if (childBottom > viewBottom) {
+      sb.scrollTop = childBottom - viewHeight;
+      return;
+    }
+    // Selection above visible area → scroll to show at top edge
+    if (childTop < viewTop) {
+      sb.scrollTop = childTop;
+    }
   }, [selectedIndex, podcastListItems.length]);
 
   // Refresh DB-backed views when switching to them
-  const refreshLibraryView = useCallback((view: string) => {
-    try {
-      const db = getDb();
-      if (view === 'library') setFavorites(getFavorites(db));
-      if (view === 'explore') setHistory(getHistory(db));
-    } catch (err) {
-      Logger.error(`Failed to refresh ${view}: ${err}`);
-    }
-  }, [setFavorites, setHistory]);
+  const refreshLibraryView = useCallback(
+    (view: string) => {
+      try {
+        const db = getDb();
+        if (view === 'library') setFavorites(getFavorites(db));
+        if (view === 'explore') setHistory(getHistory(db));
+      } catch (err) {
+        Logger.error(`Failed to refresh ${view}: ${err}`);
+      }
+    },
+    [setFavorites, setHistory],
+  );
 
   // Command palette executor
-  const executeCommand = useCallback((id: string) => {
-    setPaletteVisible(false);
-    switch (id) {
-      case 'play-pause': void controller.togglePause(); break;
-      case 'next': void handleNext(); break;
-      case 'prev': void handlePrev(); break;
-      case 'seek-forward': void controller.seekRelative(10); break;
-      case 'seek-backward': void controller.seekRelative(-10); break;
-      case 'seek-to': setSeekInputVisible(true); setSeekInputValue(''); break;
-      case 'volume-up': void controller.addVolume(5); break;
-      case 'volume-down': void controller.addVolume(-5); break;
-      case 'mute': void controller.toggleMute(); break;
-      case 'speed-up': void controller.cycleSpeedUp(); break;
-      case 'speed-down': void controller.cycleSpeedDown(); break;
-      case 'speed-reset': void controller.setSpeed(1.0); break;
-      case 'speed-1.5': void controller.setSpeed(1.5); break;
-      case 'speed-2': void controller.setSpeed(2.0); break;
-      case 'shuffle': handleToggleShuffle(); break;
-      case 'repeat': handleCycleRepeat(); break;
-      case 'search': setFocusedPanel('search'); break;
-      case 'view-search': setSection('music'); setMusicView('search'); setSelectedIndex(0); break;
-      case 'view-queue': setSection('music'); setMusicView('queue'); setSelectedIndex(0); break;
-      case 'view-favorites': refreshLibraryView('library'); setSection('music'); setMusicView('library'); setSelectedIndex(0); break;
-      case 'view-history': refreshLibraryView('explore'); setSection('music'); setMusicView('explore'); setSelectedIndex(0); break;
-      case 'lyrics': setLyricsVisible((v: boolean) => !v); break;
-      case 'podcast-feeds':
-        setSection('podcast');
-        setPodcastView('feeds');
-        setSelectedIndex(0);
-        break;
-      case 'podcast-subscribe':
-        if (selectedPodcast) {
-          subscribeFeed(getDb(), selectedPodcast);
-          setSubscribedFeeds(getSubscribedFeeds(getDb()));
-          Logger.info(`Subscribed: ${selectedPodcast.title}`);
-        }
-        break;
-      case 'podcast-unsubscribe':
-        if (selectedPodcast) {
-          unsubscribeFeed(getDb(), selectedPodcast.feedUrl);
-          setSubscribedFeeds(getSubscribedFeeds(getDb()));
-          Logger.info(`Unsubscribed: ${selectedPodcast.title}`);
-        }
-        break;
-      case 'transcript-url':
-        setTranscriptUrlVisible(true);
-        setTranscriptUrlValue('');
-        break;
-      case 'transcript-auto':
-        setTranscriptSource('auto');
-        Logger.info('Transcript source reset to auto');
-        break;
-      case 'transcript-reload':
-        // Re-trigger the lyrics/transcript auto-fetch by clearing and re-setting
-        setLyricsData(null);
-        setLyricsLoading(true);
-        break;
-      case 'help': setHelpVisible((v) => !v); break;
-      case 'quit': setQuitConfirmVisible(true); break;
-      case 'layout-default': setLayout('default'); break;
-      case 'layout-compact': setLayout('compact'); break;
-      case 'layout-minimal': setLayout('minimal'); break;
-      case 'layout-split': setLayout('split'); break;
-      case 'layout-wide': setLayout('wide'); break;
-      case 'layout-focus': setLayout('focus'); break;
-      case 'layout-vertical': setLayout('vertical'); break;
-      case 'layout-cycle': setLayout((prev) => nextLayout(prev)); break;
-      case 'theme-cycle': setThemeName((prev) => nextTheme(prev)); break;
-      case 'section-music': setSection('music'); break;
-      case 'section-podcast': setSection('podcast'); break;
-    }
-  }, [controller, handleNext, handlePrev, handleToggleShuffle, handleCycleRepeat,
-      setFocusedPanel, setSection, setMusicView, setPodcastView, refreshLibraryView,
-      setLayout, setLyricsVisible, setTranscriptSource, setLyricsLoading,
-      selectedPodcast, setSubscribedFeeds, setLyricsData]);
+  const executeCommand = useCallback(
+    (id: string) => {
+      setPaletteVisible(false);
+      switch (id) {
+        case 'play-pause':
+          void controller.togglePause();
+          break;
+        case 'next':
+          void handleNext();
+          break;
+        case 'prev':
+          void handlePrev();
+          break;
+        case 'seek-forward':
+          void controller.seekRelative(10);
+          break;
+        case 'seek-backward':
+          void controller.seekRelative(-10);
+          break;
+        case 'seek-to':
+          setSeekInputVisible(true);
+          setSeekInputValue('');
+          break;
+        case 'volume-up':
+          void controller.addVolume(5);
+          break;
+        case 'volume-down':
+          void controller.addVolume(-5);
+          break;
+        case 'mute':
+          void controller.toggleMute();
+          break;
+        case 'speed-up':
+          void controller.cycleSpeedUp();
+          break;
+        case 'speed-down':
+          void controller.cycleSpeedDown();
+          break;
+        case 'speed-reset':
+          void controller.setSpeed(1.0);
+          break;
+        case 'speed-1.5':
+          void controller.setSpeed(1.5);
+          break;
+        case 'speed-2':
+          void controller.setSpeed(2.0);
+          break;
+        case 'shuffle':
+          handleToggleShuffle();
+          break;
+        case 'repeat':
+          handleCycleRepeat();
+          break;
+        case 'search':
+          setFocusedPanel('search');
+          break;
+        case 'view-search':
+          setSection('music');
+          setMusicView('search');
+          setSelectedIndex(0);
+          break;
+        case 'view-queue':
+          setSection('music');
+          setMusicView('queue');
+          setSelectedIndex(0);
+          break;
+        case 'view-favorites':
+          refreshLibraryView('library');
+          setSection('music');
+          setMusicView('library');
+          setSelectedIndex(0);
+          break;
+        case 'view-history':
+          refreshLibraryView('explore');
+          setSection('music');
+          setMusicView('explore');
+          setSelectedIndex(0);
+          break;
+        case 'lyrics':
+          setLyricsVisible((v: boolean) => !v);
+          break;
+        case 'podcast-feeds':
+          setSection('podcast');
+          setPodcastView('feeds');
+          setSelectedIndex(0);
+          break;
+        case 'podcast-subscribe':
+          if (selectedPodcast) {
+            subscribeFeed(getDb(), selectedPodcast);
+            setSubscribedFeeds(getSubscribedFeeds(getDb()));
+            Logger.info(`Subscribed: ${selectedPodcast.title}`);
+          }
+          break;
+        case 'podcast-unsubscribe':
+          if (selectedPodcast) {
+            unsubscribeFeed(getDb(), selectedPodcast.feedUrl);
+            setSubscribedFeeds(getSubscribedFeeds(getDb()));
+            Logger.info(`Unsubscribed: ${selectedPodcast.title}`);
+          }
+          break;
+        case 'transcript-url':
+          setTranscriptUrlVisible(true);
+          setTranscriptUrlValue('');
+          break;
+        case 'transcript-auto':
+          setTranscriptSource('auto');
+          Logger.info('Transcript source reset to auto');
+          break;
+        case 'transcript-reload':
+          // Re-trigger the lyrics/transcript auto-fetch by clearing and re-setting
+          setLyricsData(null);
+          setLyricsLoading(true);
+          break;
+        case 'help':
+          setHelpVisible((v) => !v);
+          break;
+        case 'quit':
+          setQuitConfirmVisible(true);
+          break;
+        case 'layout-default':
+          setLayout('default');
+          break;
+        case 'layout-compact':
+          setLayout('compact');
+          break;
+        case 'layout-minimal':
+          setLayout('minimal');
+          break;
+        case 'layout-split':
+          setLayout('split');
+          break;
+        case 'layout-wide':
+          setLayout('wide');
+          break;
+        case 'layout-focus':
+          setLayout('focus');
+          break;
+        case 'layout-vertical':
+          setLayout('vertical');
+          break;
+        case 'layout-cycle':
+          setLayout((prev) => nextLayout(prev));
+          break;
+        case 'theme-cycle':
+          setThemeName((prev) => nextTheme(prev));
+          break;
+        case 'section-music':
+          setSection('music');
+          break;
+        case 'section-podcast':
+          setSection('podcast');
+          break;
+      }
+    },
+    [
+      controller,
+      handleNext,
+      handlePrev,
+      handleToggleShuffle,
+      handleCycleRepeat,
+      setFocusedPanel,
+      setSection,
+      setMusicView,
+      setPodcastView,
+      refreshLibraryView,
+      setLayout,
+      setLyricsVisible,
+      setTranscriptSource,
+      setLyricsLoading,
+      selectedPodcast,
+      setSubscribedFeeds,
+      setLyricsData,
+    ],
+  );
 
   // -- Global keybindings --
   useKeyboard((key: KeyEvent) => {
     // Command palette
     if (key.ctrl && key.name === 'p') {
       setPaletteVisible((v) => {
-        if (!v) { setPaletteFilter(''); setPaletteSelectedIdx(0); }
+        if (!v) {
+          setPaletteFilter('');
+          setPaletteSelectedIdx(0);
+        }
         return !v;
       });
       return;
@@ -521,8 +730,14 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
       return;
     }
     // Section switching
-    if (key.ctrl && key.name === '1') { setSection('music'); return; }
-    if (key.ctrl && key.name === '2') { setSection('podcast'); return; }
+    if (key.ctrl && key.name === '1') {
+      setSection('music');
+      return;
+    }
+    if (key.ctrl && key.name === '2') {
+      setSection('podcast');
+      return;
+    }
     // Quit confirmation dialog — handle y/n/escape, block everything else
     if (quitConfirmVisible) {
       if (key.name === 'y' || key.name === 'return' || key.name === 'enter') {
@@ -591,7 +806,12 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
             .then((r) => r.text())
             .then((text) => {
               const lines = text.trimStart().startsWith('WEBVTT') ? parseVtt(text) : parseSrt(text);
-              setLyricsData({ lines, synced: lines.length > 0 && lines[0].time > 0, source: 'custom', sourceUrl: url });
+              setLyricsData({
+                lines,
+                synced: lines.length > 0 && lines[0].time > 0,
+                source: 'custom',
+                sourceUrl: url,
+              });
             })
             .catch(() => setLyricsData(null))
             .finally(() => setLyricsLoading(false));
@@ -658,10 +878,13 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
             setEpisodesLoading(true);
             setSelectedIndex(0);
             setEpisodePageSize(50);
-            podcastProvider.getEpisodes(podcast).then((eps) => {
-              setPodcastEpisodes(eps);
-              setEpisodesLoading(false);
-            }).catch(() => setEpisodesLoading(false));
+            podcastProvider
+              .getEpisodes(podcast)
+              .then((eps) => {
+                setPodcastEpisodes(eps);
+                setEpisodesLoading(false);
+              })
+              .catch(() => setEpisodesLoading(false));
           }
           return;
         }
@@ -680,7 +903,11 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
         const db = getDb();
         if (favoritesSet.has(trackKey)) {
           removeFavorite(db, track);
-          setFavoritesSet((prev: Set<string>) => { const next = new Set(prev); next.delete(trackKey); return next; });
+          setFavoritesSet((prev: Set<string>) => {
+            const next = new Set(prev);
+            next.delete(trackKey);
+            return next;
+          });
         } else {
           addFavorite(db, track);
           setFavoritesSet((prev: Set<string>) => new Set(prev).add(trackKey));
@@ -722,12 +949,20 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
         const idx = views.indexOf(musicView);
         if (key.name === 'j' || key.name === 'down') {
           const newView = views[Math.min(idx + 1, views.length - 1)];
-          if (newView) { setMusicView(newView); setSelectedIndex(0); refreshLibraryView(newView); }
+          if (newView) {
+            setMusicView(newView);
+            setSelectedIndex(0);
+            refreshLibraryView(newView);
+          }
           return;
         }
         if (key.name === 'k' || key.name === 'up') {
           const newView = views[Math.max(idx - 1, 0)];
-          if (newView) { setMusicView(newView); setSelectedIndex(0); refreshLibraryView(newView); }
+          if (newView) {
+            setMusicView(newView);
+            setSelectedIndex(0);
+            refreshLibraryView(newView);
+          }
           return;
         }
       } else {
@@ -735,12 +970,18 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
         const idx = views.indexOf(podcastView);
         if (key.name === 'j' || key.name === 'down') {
           const newView = views[Math.min(idx + 1, views.length - 1)];
-          if (newView) { setPodcastView(newView); setSelectedIndex(0); }
+          if (newView) {
+            setPodcastView(newView);
+            setSelectedIndex(0);
+          }
           return;
         }
         if (key.name === 'k' || key.name === 'up') {
           const newView = views[Math.max(idx - 1, 0)];
-          if (newView) { setPodcastView(newView); setSelectedIndex(0); }
+          if (newView) {
+            setPodcastView(newView);
+            setSelectedIndex(0);
+          }
           return;
         }
       }
@@ -751,18 +992,54 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     }
 
     // Playback controls — only when not in search input
-    if (key.name === 'space') { void controller.togglePause(); return; }
-    if (key.name === 'n') { void handleNext(); return; }
-    if (key.name === 'p') { void handlePrev(); return; }
-    if (key.name === '>') { void controller.seekRelative(10); return; }
-    if (key.name === '<') { void controller.seekRelative(-10); return; }
-    if (key.name === '=' || key.name === '+') { void controller.addVolume(5); return; }
-    if (key.name === '-') { void controller.addVolume(-5); return; }
-    if (key.name === 'm') { void controller.toggleMute(); return; }
-    if (key.name === 's') { handleToggleShuffle(); return; }
-    if (key.name === 'r') { handleCycleRepeat(); return; }
-    if (key.name === ']') { void controller.cycleSpeedUp(); return; }
-    if (key.name === '[') { void controller.cycleSpeedDown(); return; }
+    if (key.name === 'space') {
+      void controller.togglePause();
+      return;
+    }
+    if (key.name === 'n') {
+      void handleNext();
+      return;
+    }
+    if (key.name === 'p') {
+      void handlePrev();
+      return;
+    }
+    if (key.name === '>') {
+      void controller.seekRelative(10);
+      return;
+    }
+    if (key.name === '<') {
+      void controller.seekRelative(-10);
+      return;
+    }
+    if (key.name === '=' || key.name === '+') {
+      void controller.addVolume(5);
+      return;
+    }
+    if (key.name === '-') {
+      void controller.addVolume(-5);
+      return;
+    }
+    if (key.name === 'm') {
+      void controller.toggleMute();
+      return;
+    }
+    if (key.name === 's') {
+      handleToggleShuffle();
+      return;
+    }
+    if (key.name === 'r') {
+      handleCycleRepeat();
+      return;
+    }
+    if (key.name === ']') {
+      void controller.cycleSpeedUp();
+      return;
+    }
+    if (key.name === '[') {
+      void controller.cycleSpeedDown();
+      return;
+    }
 
     // Focus management
     if (key.name === 'tab') {
@@ -788,7 +1065,13 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
     }
 
     // Remove from queue
-    if (key.name === 'x' && focusedPanel === 'main' && section === 'music' && musicView === 'queue' && queue.length > 0) {
+    if (
+      key.name === 'x' &&
+      focusedPanel === 'main' &&
+      section === 'music' &&
+      musicView === 'queue' &&
+      queue.length > 0
+    ) {
       const [newQueue, newIdx] = removeFromQueue(queue, selectedIndex, queueIndex);
       setQueue(newQueue);
       setQueueIndex(newIdx);
@@ -809,63 +1092,94 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
 
   // -- Reusable JSX fragments --
   const resultCount = mainTracks.length;
-  const pageInfo = section === 'music' && musicView === 'search' && resultCount > 0
-    ? ` (${resultCount}${searchHasMore ? ' • Shift+L for more' : ''})` : '';
-  const viewTitle = section === 'podcast'
-    ? (podcastView === 'episodes' && selectedPodcast ? selectedPodcast.title : 'Podcasts')
-    : (musicView === 'queue' ? 'Queue'
-      : musicView === 'library' ? 'Favorites'
-      : musicView === 'explore' ? 'History'
-      : 'Results') + pageInfo;
+  const pageInfo =
+    section === 'music' && musicView === 'search' && resultCount > 0
+      ? ` (${resultCount}${searchHasMore ? ' • Shift+L for more' : ''})`
+      : '';
+  const viewTitle =
+    section === 'podcast'
+      ? podcastView === 'episodes' && selectedPodcast
+        ? selectedPodcast.title
+        : 'Podcasts'
+      : (musicView === 'queue'
+          ? 'Queue'
+          : musicView === 'library'
+            ? 'Favorites'
+            : musicView === 'explore'
+              ? 'History'
+              : 'Results') + pageInfo;
 
-  const emptyMessage = section === 'podcast' ? 'Use Ctrl+P > "podcast" to search, or subscribe to feeds.'
-    : musicView === 'queue' ? 'Queue is empty. Press q on a track to add it.'
-    : musicView === 'library' ? 'No favorites yet. Press f on a track to save it.'
-    : musicView === 'explore' ? 'No history yet. Play a track to start.'
-    : 'Press / to search YouTube Music';
+  const emptyMessage =
+    section === 'podcast'
+      ? 'Use Ctrl+P > "podcast" to search, or subscribe to feeds.'
+      : musicView === 'queue'
+        ? 'Queue is empty. Press q on a track to add it.'
+        : musicView === 'library'
+          ? 'No favorites yet. Press f on a track to save it.'
+          : musicView === 'explore'
+            ? 'No history yet. Play a track to start.'
+            : 'Press / to search YouTube Music';
 
-  const podcastListJsx = podcastListItems.length > 0 ? (
-    <scrollbox ref={podcastScrollRef}>
-      {podcastListItems.map((podcast, i) => {
-        const selected = i === selectedIndex;
-        return (
-          <box key={podcast.id} id={`podcast-row-${i}`} flexDirection="column" backgroundColor={selected ? t.selection : undefined} paddingLeft={1} paddingRight={1}>
-            <box flexDirection="row">
-              <text fg={selected ? t.accent : t.dim} attributes={selected ? TextAttributes.BOLD : 0}>
-                {String(i + 1).padStart(2, ' ')}  {selected ? '\u25b8 ' : '  '}
-              </text>
-              <text fg={selected ? t.accent : t.fg} attributes={selected ? TextAttributes.BOLD : 0} truncate flexGrow={1}>
-                {podcast.title}
-              </text>
-              {isSubscribed(getDb(), podcast.feedUrl) && <text fg={t.green}> \u2713</text>}
+  const podcastListJsx =
+    podcastListItems.length > 0 ? (
+      <scrollbox ref={podcastScrollRef}>
+        {podcastListItems.map((podcast, i) => {
+          const selected = i === selectedIndex;
+          return (
+            <box
+              key={podcast.id}
+              id={`podcast-row-${i}`}
+              flexDirection="column"
+              backgroundColor={selected ? t.selection : undefined}
+              paddingLeft={1}
+              paddingRight={1}
+            >
+              <box flexDirection="row">
+                <text
+                  fg={selected ? t.accent : t.dim}
+                  attributes={selected ? TextAttributes.BOLD : 0}
+                >
+                  {String(i + 1).padStart(2, ' ')} {selected ? '\u25b8 ' : '  '}
+                </text>
+                <text
+                  fg={selected ? t.accent : t.fg}
+                  attributes={selected ? TextAttributes.BOLD : 0}
+                  truncate
+                  flexGrow={1}
+                >
+                  {podcast.title}
+                </text>
+                {isSubscribed(getDb(), podcast.feedUrl) && <text fg={t.green}> \u2713</text>}
+              </box>
+              <box flexDirection="row">
+                <text fg={selected ? t.dim : t.dim}>
+                  {'      '}
+                  {podcast.author}
+                </text>
+              </box>
             </box>
-            <box flexDirection="row">
-              <text fg={selected ? t.dim : t.dim}>
-                {'      '}{podcast.author}
-              </text>
-            </box>
-          </box>
-        );
-      })}
-    </scrollbox>
-  ) : null;
+          );
+        })}
+      </scrollbox>
+    ) : null;
 
-  const trackListJsx = mainTracks.length > 0 ? (
-    <TrackList
-      tracks={mainTracks}
-      focused={focusedPanel === 'main'}
-      selectedIndex={selectedIndex}
-      onSelect={setSelectedIndex}
-      onPlay={mainOnPlay}
-      playingTrackId={playerTrack?.id}
-      showRemoveHint={section === 'music' && musicView === 'queue'}
-    />
-  ) : (
-    <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={1}>
-      <text fg={TEXT_FG}>{emptyMessage}</text>
-      <text fg={DIM}>[?] help  [ctrl+p] commands  [ctrl+l] layout  [ctrl+t] theme</text>
-    </box>
-  );
+  const trackListJsx =
+    mainTracks.length > 0 ? (
+      <TrackList
+        tracks={mainTracks}
+        focused={focusedPanel === 'main'}
+        selectedIndex={selectedIndex}
+        onSelect={setSelectedIndex}
+        onPlay={mainOnPlay}
+        playingTrackId={playerTrack?.id}
+        showRemoveHint={section === 'music' && musicView === 'queue'}
+      />
+    ) : (
+      <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={1}>
+        <text fg={TEXT_FG}>{emptyMessage}</text>
+        <text fg={DIM}>[?] help [ctrl+p] commands [ctrl+l] layout [ctrl+t] theme</text>
+      </box>
+    );
 
   const isVertical = layout === 'vertical';
   const mainPanel = (
@@ -876,7 +1190,8 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
         width={lyricsVisible && !isVertical ? '35%' : undefined}
         height={lyricsVisible && isVertical ? '50%' : undefined}
         flexDirection="column"
-        border borderStyle="rounded"
+        border
+        borderStyle="rounded"
         borderColor={focusedPanel === 'main' ? ACCENT : DIM}
         title={viewTitle}
       >
@@ -884,7 +1199,11 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
           <box paddingLeft={1} paddingTop={1}>
             <text fg={DIM}>Searching...</text>
           </box>
-        ) : section === 'podcast' && podcastListJsx ? podcastListJsx : trackListJsx}
+        ) : section === 'podcast' && podcastListJsx ? (
+          podcastListJsx
+        ) : (
+          trackListJsx
+        )}
       </box>
       {/* Lyrics/Transcript: remaining space */}
       {lyricsVisible && (section === 'podcast' ? <Transcript /> : <Lyrics />)}
@@ -904,9 +1223,13 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
   );
 
   const headerJsx = (
-    <Header focused={focusedPanel === 'search'} section={section} onSearch={handleSearch} onSectionChange={setSection} />
+    <Header
+      focused={focusedPanel === 'search'}
+      section={section}
+      onSearch={handleSearch}
+      onSectionChange={setSection}
+    />
   );
-
 
   // -- Layout rendering --
   return (
@@ -916,7 +1239,7 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
           <NowPlaying />
           <text fg={DIM}>
-            [space] pause  [n/p] next/prev  [ctrl+l] layout  [ctrl+t] theme  [ctrl+q] quit
+            [space] pause [n/p] next/prev [ctrl+l] layout [ctrl+t] theme [ctrl+q] quit
           </text>
         </box>
       ) : (
@@ -946,8 +1269,14 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
           ) : layout === 'split' ? (
             /* Split: queue left, results right */
             <box flexDirection="row" flexGrow={1}>
-              <box flexGrow={1} flexDirection="column" border borderStyle="rounded"
-                borderColor={focusedPanel === 'sidebar' ? ACCENT : DIM} title="Queue">
+              <box
+                flexGrow={1}
+                flexDirection="column"
+                border
+                borderStyle="rounded"
+                borderColor={focusedPanel === 'sidebar' ? ACCENT : DIM}
+                title="Queue"
+              >
                 <TrackList
                   tracks={queue}
                   focused={focusedPanel === 'sidebar'}
@@ -989,7 +1318,10 @@ function AppInner({ controller, onQuit }: { controller: PlayerController; onQuit
         visible={paletteVisible}
         filter={paletteFilter}
         selectedIdx={paletteSelectedIdx}
-        onFilterChange={(v) => { setPaletteFilter(v); setPaletteSelectedIdx(0); }}
+        onFilterChange={(v) => {
+          setPaletteFilter(v);
+          setPaletteSelectedIdx(0);
+        }}
         onSubmit={() => {
           const cmds = filterCommands(paletteFilter);
           const cmd = cmds[paletteSelectedIdx];
