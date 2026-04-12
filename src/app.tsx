@@ -218,12 +218,17 @@ function AppInner({
     }
   }, [setFavorites, setFavoritesSet, setHistory, setSubscribedFeeds]);
 
-  // Auto-fetch lyrics when track changes
+  // Auto-fetch lyrics when track changes (music only).
+  // Podcast transcripts are loaded by handlePlayEpisode — do NOT overwrite
+  // them here, otherwise fetchLyrics returns null and clears the transcript.
   useEffect(() => {
     if (!playerTrack) {
       setLyricsData(null);
       return;
     }
+    // Skip for podcast tracks — transcript is handled separately
+    if (section === 'podcast') return;
+
     let cancelled = false;
     setLyricsLoading(true);
     fetchLyrics(playerTrack)
@@ -242,7 +247,7 @@ function AppInner({
     return () => {
       cancelled = true;
     };
-  }, [playerTrack, setLyricsData, setLyricsLoading]);
+  }, [playerTrack, section, setLyricsData, setLyricsLoading]);
 
   // -- Handlers --
 
