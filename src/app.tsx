@@ -248,29 +248,35 @@ function AppInner({
 
   const suggestionsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchSuggestions = useCallback(async (query: string) => {
-    if (!query.trim() || query.length < 2 || section === 'podcast') {
-      setSuggestions([]);
-      setSuggestionsVisible(false);
-      return;
-    }
-    try {
-      const provider = getActiveProvider();
-      if (provider.getSearchSuggestions) {
-        const results = await provider.getSearchSuggestions(query);
-        setSuggestions(results.slice(0, 8));
-        setSuggestionIdx(-1);
-        setSuggestionsVisible(results.length > 0);
+  const fetchSuggestions = useCallback(
+    async (query: string) => {
+      if (!query.trim() || query.length < 2 || section === 'podcast') {
+        setSuggestions([]);
+        setSuggestionsVisible(false);
+        return;
       }
-    } catch {
-      // Suggestions are non-critical
-    }
-  }, [section, setSuggestions, setSuggestionIdx, setSuggestionsVisible]);
+      try {
+        const provider = getActiveProvider();
+        if (provider.getSearchSuggestions) {
+          const results = await provider.getSearchSuggestions(query);
+          setSuggestions(results.slice(0, 8));
+          setSuggestionIdx(-1);
+          setSuggestionsVisible(results.length > 0);
+        }
+      } catch {
+        // Suggestions are non-critical
+      }
+    },
+    [section, setSuggestions, setSuggestionIdx, setSuggestionsVisible],
+  );
 
-  const handleSearchInput = useCallback((value: string) => {
-    if (suggestionsTimerRef.current) clearTimeout(suggestionsTimerRef.current);
-    suggestionsTimerRef.current = setTimeout(() => void fetchSuggestions(value), 300);
-  }, [fetchSuggestions]);
+  const handleSearchInput = useCallback(
+    (value: string) => {
+      if (suggestionsTimerRef.current) clearTimeout(suggestionsTimerRef.current);
+      suggestionsTimerRef.current = setTimeout(() => void fetchSuggestions(value), 300);
+    },
+    [fetchSuggestions],
+  );
 
   const handleSearch = useCallback(
     async (query: string) => {
@@ -763,22 +769,54 @@ function AppInner({
       });
       return;
     }
-    // Layout cycling
-    if (key.ctrl && key.name === 'l') {
+    // Layout cycling — skip when an input is active
+    if (
+      key.ctrl &&
+      key.name === 'l' &&
+      focusedPanel !== 'search' &&
+      !paletteVisible &&
+      !seekInputVisible &&
+      !transcriptUrlVisible &&
+      !transcriptSearchVisible
+    ) {
       setLayout((prev) => nextLayout(prev));
       return;
     }
-    // Theme cycling
-    if (key.ctrl && key.name === 't') {
+    // Theme cycling — skip when an input is active
+    if (
+      key.ctrl &&
+      key.name === 't' &&
+      focusedPanel !== 'search' &&
+      !paletteVisible &&
+      !seekInputVisible &&
+      !transcriptUrlVisible &&
+      !transcriptSearchVisible
+    ) {
       setThemeName((prev) => nextTheme(prev));
       return;
     }
-    // Section switching
-    if (key.ctrl && key.name === '1') {
+    // Section switching — skip when an input is active
+    if (
+      key.ctrl &&
+      key.name === '1' &&
+      focusedPanel !== 'search' &&
+      !paletteVisible &&
+      !seekInputVisible &&
+      !transcriptUrlVisible &&
+      !transcriptSearchVisible
+    ) {
       setSection('music');
       return;
     }
-    if (key.ctrl && key.name === '2') {
+    if (
+      key.ctrl &&
+      key.name === '2' &&
+      focusedPanel !== 'search' &&
+      !paletteVisible &&
+      !seekInputVisible &&
+      !transcriptUrlVisible &&
+      !transcriptSearchVisible
+    ) {
       setSection('podcast');
       return;
     }
@@ -1473,16 +1511,23 @@ function AppInner({
           paddingRight={1}
         >
           <box flexDirection="row">
-            <text fg={t.accent} attributes={TextAttributes.BOLD}>Find: </text>
+            <text fg={t.accent} attributes={TextAttributes.BOLD}>
+              Find:{' '}
+            </text>
             <input
               focused
-              onInput={((v: string) => {
-                setTranscriptSearchQuery(v);
-                setTranscriptSearchIdx(0);
-              }) as never}
+              onInput={
+                ((v: string) => {
+                  setTranscriptSearchQuery(v);
+                  setTranscriptSearchIdx(0);
+                }) as never
+              }
             />
             {transcriptMatches.length > 0 && (
-              <text fg={t.dim}> ({transcriptSearchIdx + 1}/{transcriptMatches.length})</text>
+              <text fg={t.dim}>
+                {' '}
+                ({transcriptSearchIdx + 1}/{transcriptMatches.length})
+              </text>
             )}
           </box>
           {transcriptMatches.slice(0, 5).map((match, i) => (
@@ -1492,11 +1537,12 @@ function AppInner({
               attributes={i === transcriptSearchIdx ? TextAttributes.BOLD : 0}
               truncate
             >
-              {i === transcriptSearchIdx ? ' \u25b8 ' : '   '}[{formatTime(match.time)}] {match.text}
+              {i === transcriptSearchIdx ? ' \u25b8 ' : '   '}[{formatTime(match.time)}]{' '}
+              {match.text}
             </text>
           ))}
           {transcriptMatches.length === 0 && transcriptSearchQuery.trim() && (
-            <text fg={t.dim}>  No matches</text>
+            <text fg={t.dim}> No matches</text>
           )}
         </box>
       )}
