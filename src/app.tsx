@@ -61,6 +61,7 @@ import { podcastProvider } from './providers/podcast';
 import { fetchTranscript } from './providers/transcript';
 import { findYouTubeVideoId, youtubeUrl, extractYouTubeSrt } from './providers/podcast-youtube';
 import { parseSrt, parseVtt } from './providers/subtitle-parser';
+import { searchTranscript } from './utils/transcript-search';
 import {
   podcastSearchResultsAtom,
   podcastSearchLoadingAtom,
@@ -194,13 +195,13 @@ function AppInner({
   const [transcriptSearchQuery, setTranscriptSearchQuery] = useState('');
   const [transcriptSearchIdx, setTranscriptSearchIdx] = useState(0);
 
-  const transcriptMatches = useMemo(() => {
-    if (!transcriptSearchVisible || !transcriptSearchQuery.trim() || !lyricsData?.lines) return [];
-    const q = transcriptSearchQuery.toLowerCase();
-    return lyricsData.lines
-      .map((line, idx) => ({ text: line.text, time: line.time, idx }))
-      .filter(({ text }) => text.toLowerCase().includes(q));
-  }, [transcriptSearchVisible, transcriptSearchQuery, lyricsData]);
+  const transcriptMatches = useMemo(
+    () =>
+      transcriptSearchVisible
+        ? searchTranscript(lyricsData?.lines ?? [], transcriptSearchQuery)
+        : [],
+    [transcriptSearchVisible, transcriptSearchQuery, lyricsData],
+  );
   const setTranscriptSource = useSetAtom(transcriptSourceAtom);
   const podcastScrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -693,7 +694,8 @@ function AppInner({
           setLyricsLoading(true);
           break;
         case 'transcript-search':
-          if (lyricsVisible && section === 'podcast') {
+          if (lyricsData?.lines && lyricsData.lines.length > 0) {
+            if (!lyricsVisible) setLyricsVisible(true);
             setTranscriptSearchVisible(true);
             setTranscriptSearchQuery('');
             setTranscriptSearchIdx(0);
@@ -1063,8 +1065,9 @@ function AppInner({
       return;
     }
 
-    // Transcript text search — Ctrl+F when transcript visible
-    if (key.ctrl && key.name === 'f' && lyricsVisible && section === 'podcast') {
+    // Find in lyrics/transcript — Ctrl+F when lyrics data is available
+    if (key.ctrl && key.name === 'f' && lyricsData?.lines && lyricsData.lines.length > 0) {
+      if (!lyricsVisible) setLyricsVisible(true);
       setTranscriptSearchVisible(true);
       setTranscriptSearchQuery('');
       setTranscriptSearchIdx(0);
