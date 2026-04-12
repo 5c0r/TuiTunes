@@ -1,6 +1,6 @@
 import { TextAttributes, type KeyEvent, type ScrollBoxRenderable } from '@opentui/core';
 import type React from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Provider, useAtomValue, useSetAtom } from 'jotai';
 import type { Store } from 'jotai/vanilla/store';
 import { useKeyboard } from '@opentui/react';
@@ -18,6 +18,9 @@ import {
   searchPageAtom,
   searchHasMoreAtom,
   searchContinuationAtom,
+  searchSuggestionsAtom,
+  suggestionSelectedIdxAtom,
+  suggestionsVisibleAtom,
   type MusicView,
   type PodcastView,
 } from './store/ui';
@@ -71,6 +74,7 @@ import { Logger } from './utils/logger';
 import { getDb } from './db/index';
 import { addFavorite, removeFavorite, getFavorites, getHistory } from './db/queries';
 import { favoritesSetAtom, favoritesAtom, historyAtom } from './store/library';
+import { formatTime } from './utils/format';
 
 interface AppProps {
   store: Store;
@@ -112,6 +116,7 @@ function AppInner({
   const lyricsVisible = useAtomValue(lyricsVisibleAtom);
   const setLyricsVisible = useSetAtom(lyricsVisibleAtom);
   const setLyricsData = useSetAtom(lyricsDataAtom);
+  const lyricsData = useAtomValue(lyricsDataAtom);
   const setLyricsLoading = useSetAtom(lyricsLoadingAtom);
 
   // Search state
@@ -125,6 +130,14 @@ function AppInner({
   const setSearchHasMore = useSetAtom(searchHasMoreAtom);
   const searchContinuation = useAtomValue(searchContinuationAtom);
   const setSearchContinuation = useSetAtom(searchContinuationAtom);
+
+  // Search suggestions
+  const suggestions = useAtomValue(searchSuggestionsAtom);
+  const setSuggestions = useSetAtom(searchSuggestionsAtom);
+  const suggestionIdx = useAtomValue(suggestionSelectedIdxAtom);
+  const setSuggestionIdx = useSetAtom(suggestionSelectedIdxAtom);
+  const suggestionsVisible = useAtomValue(suggestionsVisibleAtom);
+  const setSuggestionsVisible = useSetAtom(suggestionsVisibleAtom);
 
   // Queue state
   const queue = useAtomValue(queueAtom);
@@ -177,6 +190,17 @@ function AppInner({
   const [seekInputValue, setSeekInputValue] = useState('');
   const [transcriptUrlVisible, setTranscriptUrlVisible] = useState(false);
   const [transcriptUrlValue, setTranscriptUrlValue] = useState('');
+  const [transcriptSearchVisible, setTranscriptSearchVisible] = useState(false);
+  const [transcriptSearchQuery, setTranscriptSearchQuery] = useState('');
+  const [transcriptSearchIdx, setTranscriptSearchIdx] = useState(0);
+
+  const transcriptMatches = useMemo(() => {
+    if (!transcriptSearchVisible || !transcriptSearchQuery.trim() || !lyricsData?.lines) return [];
+    const q = transcriptSearchQuery.toLowerCase();
+    return lyricsData.lines
+      .map((line, idx) => ({ text: line.text, time: line.time, idx }))
+      .filter(({ text }) => text.toLowerCase().includes(q));
+  }, [transcriptSearchVisible, transcriptSearchQuery, lyricsData]);
   const setTranscriptSource = useSetAtom(transcriptSourceAtom);
   const podcastScrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -222,9 +246,37 @@ function AppInner({
 
   // -- Handlers --
 
+  const suggestionsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.length < 2 || section === 'podcast') {
+      setSuggestions([]);
+      setSuggestionsVisible(false);
+      return;
+    }
+    try {
+      const provider = getActiveProvider();
+      if (provider.getSearchSuggestions) {
+        const results = await provider.getSearchSuggestions(query);
+        setSuggestions(results.slice(0, 8));
+        setSuggestionIdx(-1);
+        setSuggestionsVisible(results.length > 0);
+      }
+    } catch {
+      // Suggestions are non-critical
+    }
+  }, [section, setSuggestions, setSuggestionIdx, setSuggestionsVisible]);
+
+  const handleSearchInput = useCallback((value: string) => {
+    if (suggestionsTimerRef.current) clearTimeout(suggestionsTimerRef.current);
+    suggestionsTimerRef.current = setTimeout(() => void fetchSuggestions(value), 300);
+  }, [fetchSuggestions]);
+
   const handleSearch = useCallback(
     async (query: string) => {
       if (!query.trim()) return;
+      setSuggestions([]);
+      setSuggestionsVisible(false);
       setFocusedPanel('main');
       setSelectedIndex(0);
 
@@ -277,14 +329,14 @@ function AppInner({
   );
 
   const handleLoadMore = useCallback(async () => {
-    if (!searchHasMore || searchPage >= 2 || !searchContinuation) return;
+    if (!searchHasMore || !searchContinuation) return;
     setSearchLoading(true);
     try {
       const provider = getActiveProvider();
       const results = await provider.search('', { continuation: searchContinuation });
       const existing = searchResults?.tracks ?? [];
       setSearchResults({ ...results, tracks: [...existing, ...results.tracks] });
-      setSearchHasMore(results.hasMore && searchPage + 1 < 2);
+      setSearchHasMore(results.hasMore);
       setSearchContinuation(results.continuation ?? null);
       setSearchPage(searchPage + 1);
       Logger.info(`Loaded page ${searchPage + 1}: ${results.tracks.length} more results`);
@@ -629,6 +681,13 @@ function AppInner({
           setLyricsData(null);
           setLyricsLoading(true);
           break;
+        case 'transcript-search':
+          if (lyricsVisible && section === 'podcast') {
+            setTranscriptSearchVisible(true);
+            setTranscriptSearchQuery('');
+            setTranscriptSearchIdx(0);
+          }
+          break;
         case 'help':
           setHelpVisible((v) => !v);
           break;
@@ -810,16 +869,66 @@ function AppInner({
       return;
     }
 
+    // Transcript text search — filter and jump to timestamp
+    if (transcriptSearchVisible) {
+      if (key.name === 'escape') {
+        setTranscriptSearchVisible(false);
+        setTranscriptSearchQuery('');
+        setTranscriptSearchIdx(0);
+      } else if (key.name === 'return' || key.name === 'enter') {
+        const match = transcriptMatches[transcriptSearchIdx];
+        if (match) {
+          void controller.seekAbsolute(match.time);
+        }
+        setTranscriptSearchVisible(false);
+        setTranscriptSearchQuery('');
+        setTranscriptSearchIdx(0);
+      } else if (key.name === 'down') {
+        setTranscriptSearchIdx((i) => Math.min(i + 1, Math.max(0, transcriptMatches.length - 1)));
+      } else if (key.name === 'up') {
+        setTranscriptSearchIdx((i) => Math.max(i - 1, 0));
+      }
+      return;
+    }
+
     // When search input is focused, only allow Tab, Escape, and Ctrl combos.
     // Everything else is the user typing a query.
     if (focusedPanel === 'search') {
-      if (key.name === 'tab') {
-        setFocusedPanel('main');
-      } else if (key.name === 'escape') {
-        setFocusedPanel('main');
+      // Suggestion navigation
+      if (suggestionsVisible && suggestions.length > 0) {
+        if (key.name === 'down') {
+          setSuggestionIdx((i) => Math.min(i + 1, suggestions.length - 1));
+          return;
+        }
+        if (key.name === 'up') {
+          setSuggestionIdx((i) => Math.max(i - 1, -1));
+          return;
+        }
+        if ((key.name === 'return' || key.name === 'enter') && suggestionIdx >= 0) {
+          const selected = suggestions[suggestionIdx];
+          if (selected) {
+            setSuggestions([]);
+            setSuggestionsVisible(false);
+            void handleSearch(selected);
+          }
+          return;
+        }
       }
-      // Ctrl combos already handled above (Ctrl+P, Ctrl+L, Ctrl+T)
-      // Quit handled below — but also Ctrl-gated so it's fine
+      if (key.name === 'escape') {
+        if (suggestionsVisible) {
+          setSuggestions([]);
+          setSuggestionsVisible(false);
+        } else {
+          setFocusedPanel('main');
+        }
+        return;
+      }
+      if (key.name === 'tab') {
+        setSuggestions([]);
+        setSuggestionsVisible(false);
+        setFocusedPanel('main');
+        return;
+      }
       if (key.ctrl && (key.name === 'q' || key.name === 'c')) {
         setQuitConfirmVisible(true);
       }
@@ -924,6 +1033,14 @@ function AppInner({
     if (key.name === 't') {
       setSeekInputVisible(true);
       setSeekInputValue('');
+      return;
+    }
+
+    // Transcript text search — Ctrl+F when transcript visible
+    if (key.ctrl && key.name === 'f' && lyricsVisible && section === 'podcast') {
+      setTranscriptSearchVisible(true);
+      setTranscriptSearchQuery('');
+      setTranscriptSearchIdx(0);
       return;
     }
 
@@ -1213,6 +1330,10 @@ function AppInner({
       section={section}
       onSearch={handleSearch}
       onSectionChange={setSection}
+      onInput={handleSearchInput}
+      suggestions={suggestions}
+      suggestionIdx={suggestionIdx}
+      suggestionsVisible={suggestionsVisible}
     />
   );
 
@@ -1336,6 +1457,49 @@ function AppInner({
         value={transcriptUrlValue}
         onInput={setTranscriptUrlValue}
       />
+      {transcriptSearchVisible && (
+        <box
+          position="absolute"
+          bottom={3}
+          left={1}
+          right={1}
+          height={Math.min(3 + Math.min(transcriptMatches.length, 5), 8)}
+          border
+          borderStyle="rounded"
+          borderColor={t.accent}
+          backgroundColor={t.bg}
+          flexDirection="column"
+          paddingLeft={1}
+          paddingRight={1}
+        >
+          <box flexDirection="row">
+            <text fg={t.accent} attributes={TextAttributes.BOLD}>Find: </text>
+            <input
+              focused
+              onInput={((v: string) => {
+                setTranscriptSearchQuery(v);
+                setTranscriptSearchIdx(0);
+              }) as never}
+            />
+            {transcriptMatches.length > 0 && (
+              <text fg={t.dim}> ({transcriptSearchIdx + 1}/{transcriptMatches.length})</text>
+            )}
+          </box>
+          {transcriptMatches.slice(0, 5).map((match, i) => (
+            <text
+              key={match.idx}
+              fg={i === transcriptSearchIdx ? t.accent : t.dim}
+              attributes={i === transcriptSearchIdx ? TextAttributes.BOLD : 0}
+              truncate
+            >
+              {i === transcriptSearchIdx ? ' \u25b8 ' : '   '}[{formatTime(match.time)}] {match.text}
+            </text>
+          ))}
+          {transcriptMatches.length === 0 && transcriptSearchQuery.trim() && (
+            <text fg={t.dim}>  No matches</text>
+          )}
+        </box>
+      )}
     </box>
   );
 }

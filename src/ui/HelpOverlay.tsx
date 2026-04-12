@@ -26,6 +26,7 @@ const KEYBINDINGS: ReadonlyArray<[key: string, description: string]> = [
   ['ctrl+l', 'Cycle layout'],
   ['l', 'Toggle lyrics'],
   ['L', 'Load more results (Shift+L)'],
+  ['ctrl+f', 'Find in transcript'],
   ['ctrl+t', 'Cycle theme'],
   ['ctrl+1', 'Music section'],
   ['ctrl+2', 'Podcast section'],

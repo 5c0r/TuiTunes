@@ -47,6 +47,7 @@ export const COMMANDS: Command[] = [
   { id: 'transcript-url', name: 'Transcript: Custom URL', description: 'Load transcript from a SRT/VTT URL', category: 'view' },
   { id: 'transcript-auto', name: 'Transcript: Auto Source', description: 'Reset to automatic transcript detection', category: 'view' },
   { id: 'transcript-reload', name: 'Transcript: Reload', description: 'Re-fetch transcript for current episode', category: 'view' },
+  { id: 'transcript-search', name: 'Find in Transcript', description: 'Search and jump to text in transcript', shortcut: 'ctrl+f', category: 'navigation' },
   { id: 'layout-cycle', name: 'Cycle Layout', description: 'Switch to next layout preset', shortcut: 'ctrl+l', category: 'view' },
   { id: 'theme-cycle', name: 'Cycle Theme', description: 'Switch to next color theme', shortcut: 'ctrl+t', category: 'view' },
   { id: 'section-music', name: 'Music Section', description: 'Switch to music section', shortcut: 'ctrl+1', category: 'navigation' },

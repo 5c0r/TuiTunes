@@ -44,3 +44,8 @@ export const layoutAtom = atom<LayoutPreset>('default');
 
 /** Current color theme. */
 export const themeNameAtom = atom<ThemeName>('tokyo-night');
+
+// -- Search suggestions --
+export const searchSuggestionsAtom = atom<string[]>([]);
+export const suggestionSelectedIdxAtom = atom<number>(-1);
+export const suggestionsVisibleAtom = atom<boolean>(false);
