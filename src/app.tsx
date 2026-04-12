@@ -795,28 +795,12 @@ function AppInner({
       setThemeName((prev) => nextTheme(prev));
       return;
     }
-    // Section switching — skip when an input is active
-    if (
-      key.ctrl &&
-      key.name === '1' &&
-      focusedPanel !== 'search' &&
-      !paletteVisible &&
-      !seekInputVisible &&
-      !transcriptUrlVisible &&
-      !transcriptSearchVisible
-    ) {
+    // Section switching — always works (truly global like Ctrl+P)
+    if (key.ctrl && key.name === '1') {
       setSection('music');
       return;
     }
-    if (
-      key.ctrl &&
-      key.name === '2' &&
-      focusedPanel !== 'search' &&
-      !paletteVisible &&
-      !seekInputVisible &&
-      !transcriptUrlVisible &&
-      !transcriptSearchVisible
-    ) {
+    if (key.ctrl && key.name === '2') {
       setSection('podcast');
       return;
     }
