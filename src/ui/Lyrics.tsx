@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
@@ -41,26 +41,13 @@ export function Lyrics() {
   // When data is absent, currentIdx stays -1 and the effect is a no-op.
   const currentIdx = data?.synced ? findCurrentLine(data.lines, position) : -1;
 
-  // Track previous line to avoid redundant scroll updates.
-  const prevIdxRef = useRef(-1);
-
-  // Auto-scroll: center the active line at ~40% from viewport top.
-  // Uses <box id="lyric-N"> wrappers (not <text>) because box elements
-  // have reliable layout positions for findDescendantById.
+  // Auto-scroll: keep the active lyric line visible using OpenTUI's built-in
+  // scrollChildIntoView. Scrolls the minimum amount needed — if the line is
+  // already visible, it doesn't scroll at all.
   useEffect(() => {
     const sb = scrollRef.current;
     if (!sb || currentIdx < 0) return;
-
-    // Skip scroll if the line hasn't changed.
-    if (currentIdx === prevIdxRef.current) return;
-    prevIdxRef.current = currentIdx;
-
-    const child = sb.content.findDescendantById(`lyric-${currentIdx}`);
-    if (!child) return;
-
-    const viewportH = sb.viewport.height;
-    const targetScroll = Math.max(0, child.y - Math.floor(viewportH * 0.4));
-    sb.scrollTop = targetScroll;
+    sb.scrollChildIntoView(`lyric-${currentIdx}`);
   }, [currentIdx]);
 
   if (loading) {
@@ -122,9 +109,9 @@ export function Lyrics() {
           }
 
           return (
-            <box key={i} id={`lyric-${i}`} paddingLeft={1}>
-              <text fg={t.fg}>{line.text}</text>
-            </box>
+            <text key={i} fg={t.fg}>
+              {line.text}
+            </text>
           );
         })}
       </scrollbox>

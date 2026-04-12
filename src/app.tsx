@@ -494,26 +494,11 @@ function AppInner({
   const visibleListLength =
     podcastListItems.length > 0 ? podcastListItems.length : mainTracks.length;
 
-  // Smooth follow scroll for podcast list: match TrackList behavior
+  // Let OpenTUI handle podcast list scroll (same as TrackList).
   useEffect(() => {
     const sb = podcastScrollRef.current;
     if (!sb || podcastListItems.length === 0) return;
-    const child = sb.content.findDescendantById(`podcast-row-${selectedIndex}`);
-    if (!child) return;
-    const viewTop = sb.scrollTop;
-    const viewHeight = sb.viewport.height;
-    const viewBottom = viewTop + viewHeight;
-    const childTop = child.y;
-    const childBottom = child.y + child.height;
-    // Selection below visible area → scroll to show at bottom edge
-    if (childBottom > viewBottom) {
-      sb.scrollTop = childBottom - viewHeight;
-      return;
-    }
-    // Selection above visible area → scroll to show at top edge
-    if (childTop < viewTop) {
-      sb.scrollTop = childTop;
-    }
+    sb.scrollChildIntoView(`podcast-row-${selectedIndex}`);
   }, [selectedIndex, podcastListItems.length]);
 
   // Refresh DB-backed views when switching to them

@@ -27,33 +27,12 @@ export function TrackList({
   const t = useTheme();
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
-  // Smooth follow scroll: keep the selected row visible by scrolling
-  // just enough to reveal it at the viewport edge. Moving down places
-  // the row at the bottom; moving up places it at the top.
+  // Let OpenTUI handle scroll: scrollChildIntoView scrolls the minimum
+  // amount needed to keep the selected row visible (page-turn style).
   useEffect(() => {
     const sb = scrollRef.current;
     if (!sb || tracks.length === 0) return;
-
-    const child = sb.content.findDescendantById(`track-row-${selectedIndex}`);
-    if (!child) return;
-
-    const viewTop = sb.scrollTop;
-    const viewHeight = sb.viewport.height;
-    const viewBottom = viewTop + viewHeight;
-    const childTop = child.y;
-    const childBottom = child.y + child.height;
-
-    // Selection below visible area → scroll to show at bottom edge
-    if (childBottom > viewBottom) {
-      sb.scrollTop = childBottom - viewHeight;
-      return;
-    }
-
-    // Selection above visible area → scroll to show at top edge
-    if (childTop < viewTop) {
-      sb.scrollTop = childTop;
-      return;
-    }
+    sb.scrollChildIntoView(`track-row-${selectedIndex}`);
   }, [selectedIndex, tracks.length]);
 
   if (tracks.length === 0) {

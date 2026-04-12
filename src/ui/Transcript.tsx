@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
@@ -90,50 +90,17 @@ export function Transcript() {
   const position = useAtomValue(playerPositionAtom);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
-  // Memoize paragraphs so the array reference is stable across renders.
-  // Only recompute when the underlying lyric lines change.
-  const paragraphs = useMemo(() => (data?.synced ? groupIntoParagraphs(data.lines) : []), [data]);
-
+  const paragraphs = data?.synced ? groupIntoParagraphs(data.lines) : [];
   const currentParaIdx = paragraphs.length > 0 ? findCurrentParagraph(paragraphs, position) : -1;
-  // Track the active segment within the current paragraph so scroll updates
-  // as phrases progress, not only when the paragraph changes.
-  const currentSegIdx =
-    currentParaIdx >= 0 ? findCurrentSegment(paragraphs[currentParaIdx].segments, position) : -1;
 
-  // Track previous paragraph+segment to avoid redundant scroll updates.
-  const prevParaRef = useRef(-1);
-  const prevSegRef = useRef(-1);
-
-  // Auto-scroll: keep the active portion of the current paragraph visible.
-  // For tall paragraphs (many segments), estimate vertical offset within
-  // the paragraph based on segment progress so the highlighted phrase
-  // stays near the center of the viewport.
+  // Page-based scroll: use OpenTUI's built-in scrollChildIntoView.
+  // It scrolls the minimum amount needed to make the child visible —
+  // if already on screen, it doesn't scroll at all (like turning pages).
   useEffect(() => {
     const sb = scrollRef.current;
     if (!sb || currentParaIdx < 0) return;
-
-    // Skip if neither paragraph nor segment changed.
-    if (currentParaIdx === prevParaRef.current && currentSegIdx === prevSegRef.current) return;
-    prevParaRef.current = currentParaIdx;
-    prevSegRef.current = currentSegIdx;
-
-    const child = sb.content.findDescendantById(`para-${currentParaIdx}`);
-    if (!child) return;
-
-    const viewportH = sb.viewport.height;
-    const para = paragraphs[currentParaIdx];
-    const segCount = para ? para.segments.length : 1;
-
-    // Fraction through the paragraph (0 at start, 1 at end)
-    const segProgress = segCount > 1 && currentSegIdx >= 0 ? currentSegIdx / (segCount - 1) : 0;
-
-    // Offset within the paragraph box proportional to segment progress
-    const intraParaOffset = Math.floor(child.height * segProgress);
-
-    // Target: place the active region at ~40% from viewport top
-    const targetScroll = Math.max(0, child.y + intraParaOffset - Math.floor(viewportH * 0.4));
-    sb.scrollTop = targetScroll;
-  }, [currentParaIdx, currentSegIdx, paragraphs]);
+    sb.scrollChildIntoView(`para-${currentParaIdx}`);
+  }, [currentParaIdx]);
 
   if (loading) {
     return (
