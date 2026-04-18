@@ -424,8 +424,15 @@ function AppInner({
 
   // Auto-advance queue when track ends
   useEffect(() => {
-    controller.onTrackEnd(() => void handleNext());
-  }, [controller, handleNext]);
+    controller.onTrackEnd(() => {
+      // Repeat-one: replay current track regardless of queue state
+      if (repeat === 'track' && playerTrack) {
+        void playTrack(playerTrack);
+        return;
+      }
+      void handleNext();
+    });
+  }, [controller, handleNext, repeat, playerTrack, playTrack]);
 
   const handlePrev = useCallback(async () => {
     if (!playingFromQueue || queue.length === 0) return;
