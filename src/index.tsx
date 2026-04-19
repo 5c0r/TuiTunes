@@ -6,7 +6,7 @@ import { checkDependencies } from './utils/deps';
 import { Logger } from './utils/logger';
 import { loadConfig } from './utils/config';
 import { PlayerController } from './player/controller';
-import { killMpv } from './player/process';
+import { killAllTracked } from './player/process';
 import { playerVolumeAtom } from './store/player';
 import { initProviders } from './providers/registry';
 import { initDb } from './db/index';
@@ -76,9 +76,10 @@ async function main(): Promise<void> {
 
   process.on('SIGINT', () => void cleanup());
   process.on('SIGTERM', () => void cleanup());
-  // Safety net: kill mpv if the process exits without cleanup
+  // Safety net: kill ALL spawned mpv processes if the process exits without cleanup.
+  // Uses SIGKILL since the 'exit' handler has no time for graceful shutdown.
   process.on('exit', () => {
-    killMpv();
+    killAllTracked();
   });
 }
 

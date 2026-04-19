@@ -29,6 +29,53 @@ const MPV_ARGS: readonly string[] = [
 
 let mpvProc: Subprocess | null = null;
 
+// ---------------------------------------------------------------------------
+// Process registry — tracks all spawned PIDs so nothing survives on exit.
+// ---------------------------------------------------------------------------
+
+/** Set of PIDs for every mpv process we have spawned. */
+const spawnedPids = new Set<number>();
+
+/** Register a PID in the registry. */
+function trackPid(pid: number): void {
+  spawnedPids.add(pid);
+  Logger.debug(`Process registry: tracking pid ${pid} (total: ${spawnedPids.size})`);
+}
+
+/** Remove a PID from the registry (after confirmed dead). */
+function untrackPid(pid: number): void {
+  spawnedPids.delete(pid);
+  Logger.debug(`Process registry: untracked pid ${pid} (total: ${spawnedPids.size})`);
+}
+
+/**
+ * Kill ALL tracked processes. Called on exit as a safety net.
+ * This is synchronous-safe for the process 'exit' handler.
+ */
+export function killAllTracked(): void {
+  if (spawnedPids.size === 0) return;
+  Logger.info(
+    `Process registry: killing all ${spawnedPids.size} tracked process(es): [${[...spawnedPids].join(', ')}]`,
+  );
+  for (const pid of spawnedPids) {
+    try {
+      process.kill(pid, 'SIGKILL'); // Use SIGKILL in exit handler — no time for SIGTERM grace
+    } catch {
+      // Already dead
+    }
+  }
+  spawnedPids.clear();
+}
+
+/** Return a copy of all currently tracked PIDs (for debugging). */
+export function getTrackedPids(): number[] {
+  return [...spawnedPids];
+}
+
+// ---------------------------------------------------------------------------
+// mpv process lifecycle
+// ---------------------------------------------------------------------------
+
 /**
  * Remove a stale socket file left from a previous crash.
  * Safe to call even if the file doesn't exist.
@@ -61,7 +108,9 @@ export async function spawnMpv(): Promise<Subprocess> {
     stdin: 'ignore',
   });
 
-  Logger.info(`mpv spawned with pid ${mpvProc.pid}`);
+  const pid = mpvProc.pid;
+  trackPid(pid);
+  Logger.info(`mpv spawned with pid ${pid}`);
 
   // Poll for socket file creation — mpv needs a moment.
   const deadline = Date.now() + 5_000;
@@ -73,6 +122,7 @@ export async function spawnMpv(): Promise<Subprocess> {
     }
     // Early exit if mpv already died
     if (mpvProc.exitCode !== null) {
+      untrackPid(pid);
       throw new Error(`mpv exited with code ${mpvProc.exitCode} before creating socket`);
     }
     await Bun.sleep(50);
@@ -87,10 +137,12 @@ export async function spawnMpv(): Promise<Subprocess> {
  */
 export function killMpv(): void {
   if (mpvProc) {
+    const pid = mpvProc.pid;
     if (mpvProc.exitCode === null) {
       mpvProc.kill();
-      Logger.info('mpv process killed');
+      Logger.info(`mpv process killed (pid ${pid})`);
     }
+    untrackPid(pid);
     mpvProc = null;
   }
   cleanStaleSocket();
@@ -102,6 +154,7 @@ export function killMpv(): void {
 export function getMpvProcess(): Subprocess | null {
   if (mpvProc && mpvProc.exitCode !== null) {
     // Process died — clear the reference
+    untrackPid(mpvProc.pid);
     mpvProc = null;
   }
   return mpvProc;
