@@ -1,6 +1,7 @@
 import { Innertube, Platform } from 'youtubei.js';
 import { Logger } from '../utils/logger';
 import type { IProvider, Track, SearchResult, SearchOptions } from './types';
+import type { LyricLine } from './lyrics';
 
 // youtubei.js v17 requires a custom JS evaluator for URL deciphering.
 // We don't actually need it — mpv + yt-dlp handles playback — but
@@ -83,7 +84,7 @@ export class YouTubeProvider implements IProvider {
     // Page 2+: use continuation from previous result
     if (opts?.continuation) {
       const prevResult = opts.continuation as { getContinuation: () => Promise<unknown> };
-      const page = await prevResult.getContinuation() as {
+      const page = (await prevResult.getContinuation()) as {
         contents: { contents?: unknown[] };
         has_continuation?: boolean;
       };
@@ -148,5 +149,59 @@ export class YouTubeProvider implements IProvider {
     } catch {
       return [];
     }
+  }
+}
+
+/**
+ * Fetch translated transcript for a YouTube track using youtubei.js captions API.
+ * Returns translated LyricLine[] with synced timestamps, or null on failure.
+ */
+export async function getTranslatedTranscript(
+  trackId: string,
+  targetLang: string,
+): Promise<LyricLine[] | null> {
+  try {
+    const yt = await getClient();
+    const info = await yt.getInfo(trackId);
+    const transcriptInfo = await info.getTranscript();
+    if (!transcriptInfo) return null;
+
+    // Check if target language is available
+    const availableLangs = transcriptInfo.languages;
+    if (!availableLangs.includes(targetLang)) {
+      Logger.info(
+        `YouTube transcript translation to '${targetLang}' not available for ${trackId} (available: ${availableLangs.join(', ')})`,
+      );
+      return null;
+    }
+
+    // Select the target language — returns a new TranscriptInfo with translated segments
+    const translated = await transcriptInfo.selectLanguage(targetLang);
+    const panel = translated.transcript.content;
+    if (!panel) return null;
+
+    const body = panel.body;
+    if (!body) return null;
+
+    const segments = body.initial_segments;
+    if (!segments || segments.length === 0) return null;
+
+    const lines: LyricLine[] = [];
+    for (const seg of segments) {
+      // Only TranscriptSegment has start_ms/snippet; skip TranscriptSectionHeader
+      if (!('start_ms' in seg)) continue;
+      const text = seg.snippet?.text;
+      if (!text) continue;
+      lines.push({
+        time: parseInt(seg.start_ms, 10) / 1000,
+        text,
+      });
+    }
+
+    Logger.info(`YouTube translated transcript: ${lines.length} lines (${targetLang})`);
+    return lines;
+  } catch (err) {
+    Logger.error(`YouTube transcript translation failed: ${err}`);
+    return null;
   }
 }

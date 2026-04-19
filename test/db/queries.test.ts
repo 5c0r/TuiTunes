@@ -13,6 +13,8 @@ import {
   unsubscribeFeed,
   getSubscribedFeeds,
   isSubscribed,
+  getTranslation,
+  saveTranslation,
 } from '../../src/db/queries';
 import type { Track } from '../../src/providers/types';
 import type { Podcast } from '../../src/providers/podcast-types';
@@ -116,8 +118,18 @@ describe('podcast feeds', () => {
   });
 
   test('getSubscribedFeeds returns podcasts in added_at DESC order', async () => {
-    const podA: Podcast = { ...testPodcast, id: 'a', title: 'First Pod', feedUrl: 'https://example.com/a.xml' };
-    const podB: Podcast = { ...testPodcast, id: 'b', title: 'Second Pod', feedUrl: 'https://example.com/b.xml' };
+    const podA: Podcast = {
+      ...testPodcast,
+      id: 'a',
+      title: 'First Pod',
+      feedUrl: 'https://example.com/a.xml',
+    };
+    const podB: Podcast = {
+      ...testPodcast,
+      id: 'b',
+      title: 'Second Pod',
+      feedUrl: 'https://example.com/b.xml',
+    };
 
     subscribeFeed(db, podA);
     await Bun.sleep(5);
@@ -172,5 +184,52 @@ describe('db initialization', () => {
 
   test('initDb does not throw', () => {
     expect(() => initDb()).not.toThrow();
+  });
+});
+
+describe('translations', () => {
+  test('saveTranslation + getTranslation returns cached lines', () => {
+    const lines = ['Hello', 'World', 'Test'];
+    saveTranslation(db, 'track1', 'lrclib', 'en', 'lingva', lines);
+    const result = getTranslation(db, 'track1', 'lrclib', 'en');
+    expect(result).toEqual(lines);
+  });
+
+  test('getTranslation returns null for unknown track', () => {
+    const result = getTranslation(db, 'nonexistent', 'lrclib', 'en');
+    expect(result).toBeNull();
+  });
+
+  test('getTranslation returns null for different language', () => {
+    saveTranslation(db, 'track1', 'lrclib', 'en', 'lingva', ['Hello']);
+    const result = getTranslation(db, 'track1', 'lrclib', 'vi');
+    expect(result).toBeNull();
+  });
+
+  test('saveTranslation overwrites existing translation', () => {
+    saveTranslation(db, 'track1', 'lrclib', 'en', 'lingva', ['Old']);
+    saveTranslation(db, 'track1', 'lrclib', 'en', 'deepl', ['New']);
+    const result = getTranslation(db, 'track1', 'lrclib', 'en');
+    expect(result).toEqual(['New']);
+  });
+
+  test('different providers/sources are separate cache entries', () => {
+    saveTranslation(db, 'track1', 'lrclib', 'en', 'lingva', ['From LRCLIB']);
+    saveTranslation(db, 'track1', 'youtube', 'en', 'youtube', ['From YouTube']);
+    expect(getTranslation(db, 'track1', 'lrclib', 'en')).toEqual(['From LRCLIB']);
+    expect(getTranslation(db, 'track1', 'youtube', 'en')).toEqual(['From YouTube']);
+  });
+
+  test('handles empty lines array', () => {
+    saveTranslation(db, 'track1', 'lrclib', 'en', 'lingva', []);
+    const result = getTranslation(db, 'track1', 'lrclib', 'en');
+    expect(result).toEqual([]);
+  });
+
+  test('handles lines with special characters', () => {
+    const lines = ['Line with "quotes"', 'Line with\nnewline', '日本語のテスト'];
+    saveTranslation(db, 'track1', 'lrclib', 'ja', 'lingva', lines);
+    const result = getTranslation(db, 'track1', 'lrclib', 'ja');
+    expect(result).toEqual(lines);
   });
 });

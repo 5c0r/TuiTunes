@@ -4,6 +4,7 @@ import { Logger } from '../utils/logger';
 export interface LyricLine {
   time: number;
   text: string;
+  translatedText?: string;
 }
 
 export interface LyricsResult {
@@ -11,6 +12,8 @@ export interface LyricsResult {
   synced: boolean;
   source: string;
   sourceUrl?: string;
+  originalLanguage?: string;
+  translatedTo?: string;
 }
 
 interface LrclibResponse {
@@ -18,7 +21,7 @@ interface LrclibResponse {
   plainLyrics: string | null;
 }
 
-function parseLrc(lrc: string): LyricLine[] {
+export function parseLrc(lrc: string): LyricLine[] {
   const lines: LyricLine[] = [];
   for (const raw of lrc.split('\n')) {
     const match = raw.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\]\s*(.*)/);
@@ -68,7 +71,12 @@ async function fetchFromLrclib(track: Track): Promise<LyricsResult | null> {
   }
 
   if (data.plainLyrics) {
-    return { lines: plainToLines(data.plainLyrics), synced: false, source: 'lrclib', sourceUrl: 'https://lrclib.net' };
+    return {
+      lines: plainToLines(data.plainLyrics),
+      synced: false,
+      source: 'lrclib',
+      sourceUrl: 'https://lrclib.net',
+    };
   }
 
   return null;

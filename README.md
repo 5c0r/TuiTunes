@@ -53,6 +53,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 - YouTube Music search via [youtubei.js](https://github.com/LuanRT/YouTube.js) (no API key needed)
 - Audio streaming via mpv + [yt-dlp](https://github.com/yt-dlp/yt-dlp) (audio-only, ~83MB RAM)
 - Synced lyrics from [LRCLIB](https://lrclib.net/) with per-line highlighting
+- Lyrics translation via Lingva, DeepL, or MyMemory — cached locally per track + language
 - Queue management, favorites, play history (SQLite)
 - Shuffle, repeat (off/track/all), playback speed (0.5x-2x)
 
@@ -66,7 +67,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 **Interface**
 - 6 layout presets: Default, Compact, Minimal, Split, Wide, Focus
 - 8 color themes: Tokyo Night, Catppuccin, Dracula, Nord, Gruvbox, Solarized, Rose Pine, Kanagawa
-- Command palette (Ctrl+P) with 35 fuzzy-searchable commands
+- Command palette (Ctrl+P) with fuzzy-searchable commands
 - Full Unicode support (CJK, Vietnamese, emoji)
 - Vim-style navigation (j/k/g/G)
 

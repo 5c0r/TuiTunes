@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS podcast_feeds (
 );
 
 CREATE INDEX IF NOT EXISTS idx_podcast_feeds_added ON podcast_feeds(added_at DESC);
+
+CREATE TABLE IF NOT EXISTS translations (
+  track_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  target_lang TEXT NOT NULL,
+  translation_provider TEXT NOT NULL,
+  translated_lines TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (track_id, provider, target_lang)
+);
 `;
 
 let db: Database | null = null;

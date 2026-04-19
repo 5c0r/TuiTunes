@@ -50,13 +50,16 @@ import { Lyrics } from './ui/Lyrics';
 import { Transcript } from './ui/Transcript';
 import { SeekInput, parseTimeInput } from './ui/SeekInput';
 import { TranscriptUrlInput } from './ui/TranscriptUrlInput';
+import { TranslationLanguageInput } from './ui/TranslationLanguageInput';
 import {
   lyricsVisibleAtom,
   lyricsDataAtom,
   lyricsLoadingAtom,
   transcriptSourceAtom,
+  translationEnabledAtom,
+  translationLoadingAtom,
 } from './store/lyrics';
-import { fetchLyrics } from './providers/lyrics';
+import { fetchLyrics, type LyricsResult } from './providers/lyrics';
 import { podcastProvider } from './providers/podcast';
 import { fetchTranscript } from './providers/transcript';
 import { findYouTubeVideoId, youtubeUrl, extractYouTubeSrt } from './providers/podcast-youtube';
@@ -70,12 +73,22 @@ import {
   episodesLoadingAtom,
   subscribedFeedsAtom,
 } from './store/podcast';
-import { subscribeFeed, unsubscribeFeed, getSubscribedFeeds, isSubscribed } from './db/queries';
+import {
+  subscribeFeed,
+  unsubscribeFeed,
+  getSubscribedFeeds,
+  isSubscribed,
+  getTranslation,
+  saveTranslation,
+} from './db/queries';
 import { Logger } from './utils/logger';
 import { getDb } from './db/index';
 import { addFavorite, removeFavorite, getFavorites, getHistory } from './db/queries';
 import { favoritesSetAtom, favoritesAtom, historyAtom } from './store/library';
 import { formatTime } from './utils/format';
+import { loadConfig, saveConfig } from './utils/config';
+import { getTranslationProvider } from './providers/translate';
+import { getTranslatedTranscript } from './providers/youtube';
 
 interface AppProps {
   store: Store;
@@ -119,6 +132,11 @@ function AppInner({
   const setLyricsData = useSetAtom(lyricsDataAtom);
   const lyricsData = useAtomValue(lyricsDataAtom);
   const setLyricsLoading = useSetAtom(lyricsLoadingAtom);
+
+  // Translation state
+  const translationEnabled = useAtomValue(translationEnabledAtom);
+  const setTranslationEnabled = useSetAtom(translationEnabledAtom);
+  const setTranslationLoading = useSetAtom(translationLoadingAtom);
 
   // Search state
   const searchResults = useAtomValue(searchResultsAtom);
@@ -194,6 +212,8 @@ function AppInner({
   const [transcriptSearchVisible, setTranscriptSearchVisible] = useState(false);
   const [transcriptSearchQuery, setTranscriptSearchQuery] = useState('');
   const [transcriptSearchIdx, setTranscriptSearchIdx] = useState(0);
+  const [translationLangVisible, setTranslationLangVisible] = useState(false);
+  const [translationLangValue, setTranslationLangValue] = useState('');
 
   const transcriptMatches = useMemo(
     () =>
@@ -249,6 +269,153 @@ function AppInner({
       cancelled = true;
     };
   }, [playerTrack, section, setLyricsData, setLyricsLoading]);
+
+  // Ref to hold latest lyricsData for the translation effect — avoids stale closures
+  // and lets the effect depend only on stable trigger values (translationEnabled, playerTrack).
+  const lyricsDataRef = useRef(lyricsData);
+  lyricsDataRef.current = lyricsData;
+
+  // Auto-translate lyrics when translation is enabled.
+  // The effect body reads from lyricsDataRef.current, but still needs to re-fire when
+  // lyricsData?.translatedTo is cleared (toggle re-enable) or source changes (new track).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional re-trigger via ref pattern
+  useEffect(() => {
+    if (!translationEnabled) {
+      Logger.debug('Translation effect: skipped (translation disabled)');
+      return;
+    }
+    const data = lyricsDataRef.current;
+    if (!data || data.lines.length === 0) {
+      Logger.debug(`Translation effect: skipped (no lyrics data loaded)`);
+      return;
+    }
+    // Already translated — nothing to do
+    if (data.translatedTo) {
+      Logger.debug(`Translation effect: skipped (already translated to ${data.translatedTo})`);
+      return;
+    }
+
+    const config = loadConfig();
+    // Auto-set language to 'en' on first enable if not configured
+    let targetLang = config.translationLanguage;
+    if (!targetLang) {
+      targetLang = 'en';
+      saveConfig({ ...config, translationLanguage: targetLang });
+      Logger.info(`Translation: auto-set language to 'en' (was null)`);
+    }
+
+    const trackName = playerTrack ? `${playerTrack.artist} - ${playerTrack.title}` : 'unknown';
+    Logger.info(
+      `Translation: starting for "${trackName}" (${data.lines.length} lines, source=${data.source}, target=${targetLang}, provider=${config.translationProvider})`,
+    );
+
+    let cancelled = false;
+    setTranslationLoading(true);
+
+    const doTranslation = async (): Promise<LyricsResult | null> => {
+      const trackId = playerTrack?.id ?? 'unknown';
+      const source = data.source;
+
+      // Check DB cache first
+      const cached = getTranslation(getDb(), trackId, source, targetLang);
+      if (cached && cached.length === data.lines.length) {
+        Logger.info(
+          `Translation: cache HIT for ${trackId} (${source}→${targetLang}, ${cached.length} lines)`,
+        );
+        return {
+          ...data,
+          lines: data.lines.map((line, i) => ({
+            ...line,
+            translatedText: cached[i] ?? '',
+          })),
+          translatedTo: targetLang,
+        };
+      }
+      Logger.info(`Translation: cache MISS for ${trackId} (${source}→${targetLang})`);
+
+      // For YouTube tracks, try native transcript translation first
+      if (playerTrack?.provider === 'youtube' && source === 'youtube') {
+        Logger.info(`Translation: trying YouTube native transcript for ${trackId}→${targetLang}`);
+        const ytTranslated = await getTranslatedTranscript(playerTrack.id, targetLang);
+        if (ytTranslated && ytTranslated.length > 0) {
+          Logger.info(`Translation: YouTube native OK — ${ytTranslated.length} translated lines`);
+          const mergedLines = data.lines.map((line, i) => ({
+            ...line,
+            translatedText: ytTranslated[i]?.text ?? '',
+          }));
+          const translatedTexts = mergedLines.map((l) => l.translatedText ?? '');
+          saveTranslation(getDb(), trackId, source, targetLang, 'youtube', translatedTexts);
+          return { ...data, lines: mergedLines, translatedTo: targetLang };
+        }
+        Logger.info('Translation: YouTube native unavailable, falling back to external provider');
+      }
+
+      // External provider translation (batch)
+      const provider = getTranslationProvider(config.translationProvider, {
+        deeplApiKey: config.deeplApiKey ?? undefined,
+        lingvaInstance: config.lingvaInstance ?? undefined,
+      });
+      const textsToTranslate = data.lines.map((l) => l.text).filter((t) => t.trim().length > 0);
+      if (textsToTranslate.length === 0) {
+        Logger.info('Translation: no non-empty lines to translate');
+        return null;
+      }
+
+      Logger.info(
+        `Translation: calling ${provider.name} (${provider.id}) with ${textsToTranslate.length} lines`,
+      );
+      const translatedTexts = await provider.translateBatch(textsToTranslate, targetLang);
+      Logger.info(
+        `Translation: ${provider.id} returned ${translatedTexts.length} translated lines`,
+      );
+
+      // Map back to full lines (including empty ones)
+      let translatedIdx = 0;
+      const mergedLines = data.lines.map((line) => {
+        if (line.text.trim().length === 0) {
+          return { ...line, translatedText: '' };
+        }
+        const translated = translatedTexts[translatedIdx] ?? '';
+        translatedIdx++;
+        return { ...line, translatedText: translated };
+      });
+
+      const allTranslated = mergedLines.map((l) => l.translatedText ?? '');
+      saveTranslation(getDb(), trackId, source, targetLang, provider.id, allTranslated);
+      Logger.info(
+        `Translation: merged and cached ${mergedLines.length} lines (${provider.id}→${targetLang})`,
+      );
+      return { ...data, lines: mergedLines, translatedTo: targetLang };
+    };
+
+    doTranslation()
+      .then((result) => {
+        if (!cancelled && result) {
+          const translatedCount = result.lines.filter(
+            (l) => l.translatedText && l.translatedText.length > 0,
+          ).length;
+          Logger.info(
+            `Translation: complete — ${translatedCount}/${result.lines.length} lines translated, lang=${result.translatedTo}`,
+          );
+          setLyricsData(result);
+        }
+      })
+      .catch((err) => Logger.error(`Translation: failed for "${trackName}": ${err}`))
+      .finally(() => {
+        if (!cancelled) setTranslationLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    translationEnabled,
+    playerTrack,
+    lyricsData?.translatedTo,
+    lyricsData?.source,
+    setLyricsData,
+    setTranslationLoading,
+  ]);
 
   // -- Handlers --
 
@@ -668,6 +835,32 @@ function AppInner({
         case 'lyrics':
           setLyricsVisible((v: boolean) => !v);
           break;
+        case 'toggle-translation': {
+          const nowEnabled = !translationEnabled;
+          Logger.info(
+            `Translation: toggled ${nowEnabled ? 'ON' : 'OFF'} (lyricsData=${lyricsData ? `${lyricsData.lines.length} lines, source=${lyricsData.source}` : 'null'}, translatedTo=${lyricsData?.translatedTo ?? 'none'})`,
+          );
+          setTranslationEnabled(nowEnabled);
+          if (nowEnabled) {
+            // Show lyrics panel and strip translatedTo to re-trigger the effect
+            setLyricsVisible(true);
+            if (lyricsData?.translatedTo) {
+              setLyricsData({ ...lyricsData, translatedTo: undefined });
+            }
+          } else if (lyricsData?.translatedTo) {
+            // Remove translations from display
+            setLyricsData({
+              ...lyricsData,
+              lines: lyricsData.lines.map((line) => ({ ...line, translatedText: undefined })),
+              translatedTo: undefined,
+            });
+          }
+          break;
+        }
+        case 'set-translation-language':
+          setTranslationLangVisible(true);
+          setTranslationLangValue('');
+          break;
         case 'podcast-feeds':
           setSection('podcast');
           setPodcastView('feeds');
@@ -767,6 +960,9 @@ function AppInner({
       selectedPodcast,
       setSubscribedFeeds,
       setLyricsData,
+      setTranslationEnabled,
+      translationEnabled,
+      lyricsData,
     ],
   );
 
@@ -791,7 +987,8 @@ function AppInner({
       !paletteVisible &&
       !seekInputVisible &&
       !transcriptUrlVisible &&
-      !transcriptSearchVisible
+      !transcriptSearchVisible &&
+      !translationLangVisible
     ) {
       setLayout((prev) => nextLayout(prev));
       return;
@@ -804,17 +1001,18 @@ function AppInner({
       !paletteVisible &&
       !seekInputVisible &&
       !transcriptUrlVisible &&
-      !transcriptSearchVisible
+      !transcriptSearchVisible &&
+      !translationLangVisible
     ) {
       setThemeName((prev) => nextTheme(prev));
       return;
     }
-    // Section switching — always works (truly global like Ctrl+P)
-    if (key.ctrl && key.name === '1') {
+    // Section switching — skip when search input is active
+    if (key.ctrl && key.name === '1' && focusedPanel !== 'search') {
       setSection('music');
       return;
     }
-    if (key.ctrl && key.name === '2') {
+    if (key.ctrl && key.name === '2' && focusedPanel !== 'search') {
       setSection('podcast');
       return;
     }
@@ -923,6 +1121,28 @@ function AppInner({
         setTranscriptSearchIdx((i) => Math.min(i + 1, Math.max(0, transcriptMatches.length - 1)));
       } else if (key.name === 'up') {
         setTranscriptSearchIdx((i) => Math.max(i - 1, 0));
+      }
+      return;
+    }
+
+    // Translation language input — handle enter/escape, block everything else
+    if (translationLangVisible) {
+      if (key.name === 'escape') {
+        setTranslationLangVisible(false);
+        setTranslationLangValue('');
+      } else if (key.name === 'return' || key.name === 'enter') {
+        const lang = translationLangValue.trim().toLowerCase();
+        if (lang.length >= 2) {
+          const config = loadConfig();
+          saveConfig({ ...config, translationLanguage: lang });
+          Logger.info(`Translation language set to: ${lang}`);
+          // Re-trigger translation if enabled
+          if (translationEnabled && lyricsData) {
+            setLyricsData({ ...lyricsData, translatedTo: undefined });
+          }
+        }
+        setTranslationLangVisible(false);
+        setTranslationLangValue('');
       }
       return;
     }
@@ -1493,6 +1713,12 @@ function AppInner({
         visible={transcriptUrlVisible}
         value={transcriptUrlValue}
         onInput={setTranscriptUrlValue}
+      />
+      <TranslationLanguageInput
+        visible={translationLangVisible}
+        value={translationLangValue}
+        currentLang={loadConfig().translationLanguage}
+        onInput={setTranslationLangValue}
       />
       {transcriptSearchVisible && (
         <box

@@ -3,9 +3,10 @@ import { useAtomValue } from 'jotai';
 import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
 import { useTheme } from './useTheme';
-import { lyricsDataAtom, lyricsLoadingAtom } from '../store/lyrics';
+import { lyricsDataAtom, lyricsLoadingAtom, translationLoadingAtom } from '../store/lyrics';
 import { playerPositionAtom } from '../store/player';
 import type { LyricLine } from '../providers/lyrics';
+import { Logger } from '../utils/logger';
 
 function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -34,6 +35,7 @@ export function Lyrics() {
   const t = useTheme();
   const data = useAtomValue(lyricsDataAtom);
   const loading = useAtomValue(lyricsLoadingAtom);
+  const translating = useAtomValue(translationLoadingAtom);
   const position = useAtomValue(playerPositionAtom);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -50,13 +52,32 @@ export function Lyrics() {
     sb.scrollChildIntoView(`lyric-${currentIdx}`);
   }, [currentIdx]);
 
+  // Log when translation data arrives at the rendering layer
+  useEffect(() => {
+    if (!data) return;
+    if (data.translatedTo) {
+      const translatedCount = data.lines.filter(
+        (l) => l.translatedText && l.translatedText.length > 0,
+      ).length;
+      Logger.debug(
+        `Lyrics render: displaying ${translatedCount}/${data.lines.length} translated lines (${data.source}→${data.translatedTo})`,
+      );
+    }
+  }, [data]);
+
+  const titleSuffix = data?.translatedTo
+    ? ` [→ ${data.translatedTo.toUpperCase()}]`
+    : translating
+      ? ' [translating...]'
+      : '';
+
   if (loading) {
     return (
       <box
         border
         borderStyle="rounded"
         borderColor={t.border}
-        title="Lyrics"
+        title={`Lyrics${titleSuffix}`}
         flexGrow={1}
         paddingLeft={1}
       >
@@ -85,7 +106,7 @@ export function Lyrics() {
       border
       borderStyle="rounded"
       borderColor={t.border}
-      title="Lyrics"
+      title={`Lyrics${titleSuffix}`}
       flexGrow={1}
       flexDirection="column"
     >
@@ -99,19 +120,30 @@ export function Lyrics() {
             const ts = `[${formatTimestamp(line.time)}]`;
 
             return (
-              <box key={i} id={`lyric-${i}`}>
+              <box key={i} id={`lyric-${i}`} flexDirection="column">
                 <text fg={color} attributes={isCurrent ? TextAttributes.BOLD : 0}>
                   {ts} {marker}
                   {line.text}
                 </text>
+                {line.translatedText && (
+                  <text fg={t.dim} attributes={TextAttributes.DIM}>
+                    {'       '}
+                    {line.translatedText}
+                  </text>
+                )}
               </box>
             );
           }
 
           return (
-            <text key={i} fg={t.fg}>
-              {line.text}
-            </text>
+            <box key={i} flexDirection="column">
+              <text fg={t.fg}>{line.text}</text>
+              {line.translatedText && (
+                <text fg={t.dim} attributes={TextAttributes.DIM}>
+                  {line.translatedText}
+                </text>
+              )}
+            </box>
           );
         })}
       </scrollbox>

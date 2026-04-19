@@ -271,6 +271,18 @@ export const COMMANDS: Command[] = [
     shortcut: 'ctrl+2',
     category: 'navigation',
   },
+  {
+    id: 'toggle-translation',
+    name: 'Toggle Translation',
+    description: 'Enable/disable lyrics translation',
+    category: 'view',
+  },
+  {
+    id: 'set-translation-language',
+    name: 'Set Translation Language',
+    description: 'Change target language for lyrics translation',
+    category: 'view',
+  },
   { id: 'help', name: 'Help', description: 'Show keybindings', shortcut: '?', category: 'app' },
   { id: 'quit', name: 'Quit', description: 'Exit TuiTunes', shortcut: 'ctrl+q', category: 'app' },
 ];

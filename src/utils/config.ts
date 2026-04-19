@@ -9,6 +9,10 @@ export interface TuiTunesConfig {
   theme: 'dark';
   poToken: string | null;
   visitorData: string | null;
+  translationLanguage: string | null;
+  translationProvider: string;
+  deeplApiKey: string | null;
+  lingvaInstance: string | null;
 }
 
 export const CONFIG_DIR = path.join(os.homedir(), '.config', 'tuimusic');
@@ -21,6 +25,10 @@ export const DEFAULT_CONFIG: TuiTunesConfig = {
   theme: 'dark',
   poToken: null,
   visitorData: null,
+  translationLanguage: null,
+  translationProvider: 'lingva',
+  deeplApiKey: null,
+  lingvaInstance: null,
 };
 
 export function loadConfig(): TuiTunesConfig {

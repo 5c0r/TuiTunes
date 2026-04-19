@@ -1,4 +1,3 @@
-
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from './useTheme';
 
@@ -14,7 +13,7 @@ const KEYBINDINGS: ReadonlyArray<[key: string, description: string]> = [
   ['tab', 'Cycle focus'],
   ['+/-', 'Volume up/down'],
   ['m', 'Mute'],
-  ['</>',  'Seek -10s/+10s'],
+  ['</>', 'Seek -10s/+10s'],
   ['t', 'Jump to time'],
   ['[/]', 'Speed down/up'],
   ['s', 'Toggle shuffle'],

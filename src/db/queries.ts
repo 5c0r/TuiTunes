@@ -15,7 +15,7 @@ export function addFavorite(db: Database, track: Track): void {
     track.artist,
     track.album ?? null,
     track.duration,
-    Date.now()
+    Date.now(),
   );
 }
 
@@ -24,12 +24,16 @@ export function removeFavorite(db: Database, track: Track): void {
 }
 
 export function isFavorite(db: Database, track: Track): boolean {
-  const row = db.prepare('SELECT 1 FROM favorites WHERE id = ?').get(`${track.provider}:${track.id}`);
+  const row = db
+    .prepare('SELECT 1 FROM favorites WHERE id = ?')
+    .get(`${track.provider}:${track.id}`);
   return row !== null;
 }
 
 export function getFavorites(db: Database, limit?: number): Track[] {
-  const rows = db.prepare('SELECT * FROM favorites ORDER BY added_at DESC LIMIT ?').all(limit ?? 100) as FavoriteRow[];
+  const rows = db
+    .prepare('SELECT * FROM favorites ORDER BY added_at DESC LIMIT ?')
+    .all(limit ?? 100) as FavoriteRow[];
   return rows.map(rowToTrack);
 }
 
@@ -42,7 +46,9 @@ export function addToHistory(db: Database, track: Track): void {
 }
 
 export function getHistory(db: Database, limit?: number): Track[] {
-  const rows = db.prepare('SELECT * FROM history ORDER BY played_at DESC LIMIT ?').all(limit ?? 50) as HistoryRow[];
+  const rows = db
+    .prepare('SELECT * FROM history ORDER BY played_at DESC LIMIT ?')
+    .all(limit ?? 50) as HistoryRow[];
   return rows.map(rowToTrack);
 }
 
@@ -86,7 +92,6 @@ function rowToTrack(row: FavoriteRow | HistoryRow): Track {
   return track;
 }
 
-
 // Internal row type for podcast_feeds table
 interface PodcastFeedRow {
   id: string;
@@ -110,7 +115,7 @@ export function subscribeFeed(db: Database, podcast: Podcast): void {
     podcast.description ?? null,
     podcast.feedUrl,
     podcast.artworkUrl ?? null,
-    Date.now()
+    Date.now(),
   );
 }
 
@@ -119,7 +124,9 @@ export function unsubscribeFeed(db: Database, feedUrl: string): void {
 }
 
 export function getSubscribedFeeds(db: Database): Podcast[] {
-  const rows = db.prepare('SELECT * FROM podcast_feeds ORDER BY added_at DESC').all() as PodcastFeedRow[];
+  const rows = db
+    .prepare('SELECT * FROM podcast_feeds ORDER BY added_at DESC')
+    .all() as PodcastFeedRow[];
   return rows.map(rowToPodcast);
 }
 
@@ -137,4 +144,50 @@ function rowToPodcast(row: PodcastFeedRow): Podcast {
     feedUrl: row.feed_url,
     artworkUrl: row.artwork_url ?? undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Translation cache
+// ---------------------------------------------------------------------------
+
+interface TranslationRow {
+  track_id: string;
+  provider: string;
+  target_lang: string;
+  translation_provider: string;
+  translated_lines: string;
+  created_at: string;
+}
+
+export function getTranslation(
+  db: Database,
+  trackId: string,
+  provider: string,
+  targetLang: string,
+): string[] | null {
+  const row = db
+    .prepare(
+      'SELECT translated_lines FROM translations WHERE track_id = ? AND provider = ? AND target_lang = ?',
+    )
+    .get(trackId, provider, targetLang) as TranslationRow | null;
+  if (!row) return null;
+  try {
+    return JSON.parse(row.translated_lines) as string[];
+  } catch {
+    return null;
+  }
+}
+
+export function saveTranslation(
+  db: Database,
+  trackId: string,
+  provider: string,
+  targetLang: string,
+  translationProvider: string,
+  translatedLines: string[],
+): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO translations (track_id, provider, target_lang, translation_provider, translated_lines)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(trackId, provider, targetLang, translationProvider, JSON.stringify(translatedLines));
 }
