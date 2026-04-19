@@ -1,6 +1,6 @@
 {
   "name": "tui-tunes",
-  "version": "0.3.1-alpha.2",
+  "version": "0.4.0-alpha.1",
   "description": "Terminal music player & podcast client with YouTube Music, synced lyrics, and 8 themes",
   "license": "MIT",
   "repository": {
@@ -52,6 +52,7 @@
     "jotai": "^2.12.3",
     "music-metadata": "^11.12.3",
     "react": "^19.1.0",
+    "tui-tunes": "^0.4.0-alpha.1",
     "youtubei.js": "^17.0.1"
   },
   "devDependencies": {

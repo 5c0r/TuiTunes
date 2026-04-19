@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0-alpha.1 (2026-04-19)
+
+### New
+- **Lyrics translation**: interleaved original + translated display, multi-provider
+  - YouTube tracks use native transcript translation (synced, free, no API key)
+  - LRCLIB/other lyrics translated via Lingva (default), DeepL (premium), or MyMemory
+  - Batch translation: all lines translated in a single API call per song
+  - SQLite cache per (track, source, target_lang) — no re-translation on repeats
+  - New `Toggle Translation` and `Set Translation Language` commands in Ctrl+P palette
+  - Interactive language picker overlay with 20-language lookup table
+  - Config: `translationLanguage`, `translationProvider`, `deeplApiKey`, `lingvaInstance`
+- **Process registry for mpv**: guaranteed cleanup on exit
+  - Every spawned mpv PID tracked in a registry
+  - Safety net on `process.on('exit')` sends SIGKILL to all tracked processes
+  - Normal exit path still uses graceful ipc.quit() + SIGTERM
+
+### Fixes
+- Block Ctrl+1/Ctrl+2 section switch when typing in search input
+- Comprehensive debug logging across translation pipeline
+
+### Internal
+- 243 tests, 1074 expect() calls (up from 231 / 1015)
+- New test fixture: "Unravel" Japanese synced lyrics for translation flow
+
+### Files added
+- `src/providers/translate.ts` — TranslationProvider interface + Lingva/DeepL/MyMemory
+- `src/ui/TranslationLanguageInput.tsx` — interactive language picker overlay
+- `test/providers/translate.test.ts`, `test/providers/translate-integration.test.ts`
+
 ## 0.3.1-alpha.1 (2026-04-04)
 
 ### New
