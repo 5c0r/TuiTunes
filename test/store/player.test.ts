@@ -1,13 +1,13 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import { createStore } from 'jotai';
 import {
-  playerPositionAtom,
   playerDurationAtom,
-  playerVolumeAtom,
   playerMuteAtom,
+  playerPositionAtom,
+  playerProgressAtom,
   playerStateAtom,
   playerTrackAtom,
-  playerProgressAtom,
+  playerVolumeAtom,
 } from '../../src/store/player';
 
 describe('player store', () => {
@@ -58,6 +58,18 @@ describe('player store', () => {
       store.set(playerPositionAtom, 100);
       store.set(playerDurationAtom, 100);
       expect(store.get(playerProgressAtom)).toBe(1);
+    });
+
+    test('position past duration clamps progress to 1', () => {
+      store.set(playerPositionAtom, 102);
+      store.set(playerDurationAtom, 100);
+      expect(store.get(playerProgressAtom)).toBe(1);
+    });
+
+    test('negative position clamps progress to 0', () => {
+      store.set(playerPositionAtom, -1);
+      store.set(playerDurationAtom, 100);
+      expect(store.get(playerProgressAtom)).toBe(0);
     });
 
     test('duration=0 → progress=0 regardless of position', () => {
