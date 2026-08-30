@@ -489,8 +489,6 @@ function AppInner({
       // Music search (YouTube)
       const requestId = ++musicSearchRequestIdRef.current;
       musicSearchInFlightRef.current = true;
-      setSearchHasMore(false);
-      setSearchContinuation(null);
 
       setSearchLoading(true);
       setMusicView('search');

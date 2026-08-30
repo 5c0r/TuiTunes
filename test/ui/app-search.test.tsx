@@ -54,16 +54,18 @@ const pendingSearches: Array<{
   query: string;
   options: SearchOptions | undefined;
   resolve: (result: SearchResult) => void;
+  reject: (reason?: unknown) => void;
 }> = [];
 
 const provider: IProvider = {
   id: 'app-search-test',
   name: 'App search test',
   icon: '',
-  search: (query, options) =>
-    new Promise((resolve) => {
-      pendingSearches.push({ query, options, resolve });
-    }),
+  search: (query, options) => {
+    const { promise, resolve, reject } = Promise.withResolvers<SearchResult>();
+    pendingSearches.push({ query, options, resolve, reject });
+    return promise;
+  },
   getTrack: async () => newTrack,
   getStreamUrl: async () => '',
 };
@@ -451,6 +453,52 @@ test('keeps fresh continuation ownership when an older page is pending', async (
     await settle(freshPageSearch.resolve, freshPageResult, renderOnce);
     expect(store.get(searchResultsAtom)?.tracks).toEqual([newTrack, freshPageTrack]);
     expect(store.get(searchLoadingAtom)).toBe(false);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('keeps retained music results pageable after a fresh search rejects', async () => {
+  const continuation = {};
+  const baseResult: SearchResult = {
+    tracks: [baseTrack],
+    hasMore: true,
+    continuation,
+  };
+  pendingSearches.length = 0;
+  const store = createStore();
+  store.set(focusedPanelAtom, 'search');
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+
+  try {
+    await typeAndSubmit(mockInput, renderOnce, 'base');
+    const baseSearch = pendingSearches[0];
+    if (!baseSearch) throw new Error('Expected base search');
+    await settle(baseSearch.resolve, baseResult, renderOnce);
+
+    await refocusAndReplace(store, mockInput, renderOnce, 'base', 'fresh');
+    await submit(mockInput);
+    const freshSearch = pendingSearches[1];
+    if (!freshSearch) throw new Error('Expected fresh search');
+    await act(async () => {
+      freshSearch.reject(new Error('Search failed'));
+      await Promise.resolve();
+      await Bun.sleep(0);
+    });
+    await renderOnce();
+
+    expect(captureCharFrame()).toContain('Base result');
+    expect(store.get(searchHasMoreAtom)).toBe(true);
+    expect(store.get(searchLoadingAtom)).toBe(false);
+
+    await act(async () => {
+      mockInput.pressKey('l', { shift: true });
+      await Promise.resolve();
+    });
+    expect(pendingSearches.map(({ query }) => query)).toEqual(['base', 'fresh', '']);
+    const pageSearch = pendingSearches[2];
+    if (!pageSearch) throw new Error('Expected continuation after rejected fresh search');
+    expect(pageSearch.options?.continuation).toBe(continuation);
   } finally {
     await cleanup();
   }
