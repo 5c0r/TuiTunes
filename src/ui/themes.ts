@@ -7,11 +7,11 @@ export interface Theme {
   green: string;
   red: string;
   yellow: string;
-  selection: string;     // bg for selected row
-  border: string;        // inactive border
-  borderActive: string;  // focused border (usually === accent)
-  playing: string;       // bg for playing row
-  playingFg: string;     // secondary text in playing row
+  selection: string; // bg for selected row
+  border: string; // inactive border
+  borderActive: string; // focused border (usually === accent)
+  playing: string; // bg for playing row
+  playingFg: string; // secondary text in playing row
 }
 
 export type ThemeName =
@@ -148,8 +148,14 @@ export const THEMES: Record<ThemeName, Theme> = {
 };
 
 export const THEME_ORDER: ThemeName[] = [
-  'tokyo-night', 'catppuccin', 'dracula', 'nord',
-  'gruvbox', 'solarized', 'rose-pine', 'kanagawa',
+  'tokyo-night',
+  'catppuccin',
+  'dracula',
+  'nord',
+  'gruvbox',
+  'solarized',
+  'rose-pine',
+  'kanagawa',
 ];
 
 export function nextTheme(current: ThemeName): ThemeName {

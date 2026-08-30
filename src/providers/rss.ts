@@ -5,7 +5,10 @@ import type { Episode } from './podcast-types';
  * Returns empty string if the tag is not found.
  */
 function extractTag(xml: string, tag: string): string {
-  const re = new RegExp(`<${tag}[^>]*>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))\\s*</${tag}>`, 'i');
+  const re = new RegExp(
+    `<${tag}[^>]*>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))\\s*</${tag}>`,
+    'i',
+  );
   const match = xml.match(re);
   if (!match) return '';
   return (match[1] ?? match[2] ?? '').trim();
@@ -50,7 +53,9 @@ function decodeEntities(text: string): string {
 
 /** Strip HTML tags and collapse whitespace. */
 function stripHtml(html: string): string {
-  return decodeEntities(html.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]*>/g, ''))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Simple hash for generating episode IDs when no GUID is present. */

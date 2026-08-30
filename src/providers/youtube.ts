@@ -1,7 +1,7 @@
 import { Innertube, Platform } from 'youtubei.js';
 import { Logger } from '../utils/logger';
-import type { IProvider, Track, SearchResult, SearchOptions } from './types';
 import type { LyricLine } from './lyrics';
+import type { IProvider, SearchOptions, SearchResult, Track } from './types';
 
 // youtubei.js v17 requires a custom JS evaluator for URL deciphering.
 // We don't actually need it — mpv + yt-dlp handles playback — but

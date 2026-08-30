@@ -1,5 +1,5 @@
-import type { Episode } from './podcast-types';
 import { Logger } from '../utils/logger';
+import type { Episode } from './podcast-types';
 
 /**
  * Cache of episode → YouTube video ID mappings.
@@ -25,10 +25,10 @@ export async function findYouTubeVideoId(episode: Episode): Promise<string | nul
   if (!query) return null;
 
   try {
-    const proc = Bun.spawn(
-      ['yt-dlp', '--dump-json', '--default-search', 'ytsearch1', query],
-      { stdout: 'pipe', stderr: 'pipe' }
-    );
+    const proc = Bun.spawn(['yt-dlp', '--dump-json', '--default-search', 'ytsearch1', query], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
 
     // Race: 15s timeout
     const timeoutPromise = Bun.sleep(15_000).then(() => null as string | null);
@@ -71,7 +71,9 @@ export function youtubeUrl(videoId: string): string {
  * Extract SRT captions from a YouTube video via yt-dlp.
  * Returns the raw SRT text, or null if unavailable.
  */
-export async function extractYouTubeSrt(videoId: string): Promise<{ srt: string; videoUrl: string } | null> {
+export async function extractYouTubeSrt(
+  videoId: string,
+): Promise<{ srt: string; videoUrl: string } | null> {
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { existsSync, readFileSync, unlinkSync } = await import('node:fs');
@@ -81,10 +83,21 @@ export async function extractYouTubeSrt(videoId: string): Promise<{ srt: string;
   const videoUrl = youtubeUrl(videoId);
 
   try {
-    const proc = Bun.spawn([
-      'yt-dlp', '--write-auto-sub', '--sub-lang', 'en', '--sub-format', 'srt',
-      '--skip-download', '-o', tempBase, videoUrl,
-    ], { stdout: 'pipe', stderr: 'pipe' });
+    const proc = Bun.spawn(
+      [
+        'yt-dlp',
+        '--write-auto-sub',
+        '--sub-lang',
+        'en',
+        '--sub-format',
+        'srt',
+        '--skip-download',
+        '-o',
+        tempBase,
+        videoUrl,
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
 
     await proc.exited;
 
@@ -99,6 +112,10 @@ export async function extractYouTubeSrt(videoId: string): Promise<{ srt: string;
     Logger.debug(`Caption extraction failed for ${videoId}: ${err}`);
     return null;
   } finally {
-    try { unlinkSync(srtPath); } catch { /* may not exist */ }
+    try {
+      unlinkSync(srtPath);
+    } catch {
+      /* may not exist */
+    }
   }
 }

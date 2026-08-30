@@ -1,7 +1,7 @@
-import type React from 'react';
 import { TextAttributes } from '@opentui/core';
+import type React from 'react';
+import type { MusicView, PodcastView, Section } from '../store/ui';
 import { useTheme } from './useTheme';
-import type { Section, MusicView, PodcastView } from '../store/ui';
 
 export type View = MusicView | PodcastView;
 
@@ -51,7 +51,8 @@ export function Sidebar({ focused, section, activeView }: SidebarProps): React.R
             bg={active ? t.selection : undefined}
             attributes={active ? TextAttributes.BOLD : 0}
           >
-            {active ? ' ▸ ' : '   '}{item.icon} {item.label}
+            {active ? ' ▸ ' : '   '}
+            {item.icon} {item.label}
           </text>
         );
       })}

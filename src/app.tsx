@@ -523,6 +523,8 @@ function AppInner({
       setPodcastSearchResults,
       setPodcastSearchLoading,
       setPodcastView,
+      setSuggestions,
+      setSuggestionsVisible,
     ],
   );
 
@@ -995,6 +997,8 @@ function AppInner({
       setTranslationEnabled,
       translationEnabled,
       lyricsData,
+      lyricsVisible,
+      setThemeName,
     ],
   );
 

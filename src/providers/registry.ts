@@ -1,5 +1,5 @@
-import type { IProvider } from './types';
 import type { TuiTunesConfig } from '../utils/config';
+import type { IProvider } from './types';
 import { YouTubeProvider } from './youtube';
 
 const providers: Map<string, IProvider> = new Map();

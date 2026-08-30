@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
-import type { Track } from '../providers/types';
 import type { Podcast } from '../providers/podcast-types';
+import type { Track } from '../providers/types';
 
 export function addFavorite(db: Database, track: Track): void {
   const stmt = db.prepare(`

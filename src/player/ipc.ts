@@ -1,12 +1,12 @@
 import type { Socket } from 'bun';
 import { Logger } from '../utils/logger';
 import {
-  type MpvMessage,
-  type MpvEvent,
-  type MpvResponse,
-  type MpvPropertyMap,
-  OBSERVED_PROPERTIES,
   isMpvEvent,
+  type MpvEvent,
+  type MpvMessage,
+  type MpvPropertyMap,
+  type MpvResponse,
+  OBSERVED_PROPERTIES,
 } from './types';
 
 type PropertyChangeHandler = (name: string, value: unknown) => void;
@@ -211,7 +211,9 @@ export class MpvIPC {
     if (this._connected) {
       try {
         // Fire-and-forget — mpv will close the socket
-        this.socket?.write(JSON.stringify({ command: ['quit'], request_id: ++this.requestId }) + '\n');
+        this.socket?.write(
+          JSON.stringify({ command: ['quit'], request_id: ++this.requestId }) + '\n',
+        );
       } catch {
         // Socket may already be closed
       }

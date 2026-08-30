@@ -1,5 +1,5 @@
-import { Logger } from './logger';
 import { readFileSync } from 'node:fs';
+import { Logger } from './logger';
 
 const MIN_MPV_VERSION = [0, 35] as const;
 
@@ -41,10 +41,9 @@ export function checkDependencies(): boolean {
   }
 
   const [major, minor] = version;
-  if (major < MIN_MPV_VERSION[0] ||
-      (major === MIN_MPV_VERSION[0] && minor < MIN_MPV_VERSION[1])) {
+  if (major < MIN_MPV_VERSION[0] || (major === MIN_MPV_VERSION[0] && minor < MIN_MPV_VERSION[1])) {
     Logger.warn(
-      `mpv ${major}.${minor} is too old. TuiTunes requires mpv >= ${MIN_MPV_VERSION[0]}.${MIN_MPV_VERSION[1]}.`
+      `mpv ${major}.${minor} is too old. TuiTunes requires mpv >= ${MIN_MPV_VERSION[0]}.${MIN_MPV_VERSION[1]}.`,
     );
     return false;
   }

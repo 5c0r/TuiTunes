@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { searchTranscript } from '../../src/utils/transcript-search';
 import type { LyricLine } from '../../src/providers/lyrics';
+import { searchTranscript } from '../../src/utils/transcript-search';
 
 const SAMPLE_LINES: LyricLine[] = [
   { time: 0, text: 'Welcome to our podcast about machine learning.' },

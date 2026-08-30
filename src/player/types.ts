@@ -19,18 +19,18 @@ export type MpvMessage = MpvResponse | MpvEvent;
 
 export interface MpvPropertyMap {
   'time-pos': number;
-  'duration': number;
-  'pause': boolean;
-  'volume': number;
-  'mute': boolean;
+  duration: number;
+  pause: boolean;
+  volume: number;
+  mute: boolean;
   'media-title': string;
-  'metadata': Record<string, string>;
+  metadata: Record<string, string>;
   'playlist-pos': number;
   'playlist-count': number;
   'idle-active': boolean;
   'core-idle': boolean;
   'paused-for-cache': boolean;
-  'speed': number;
+  speed: number;
 }
 
 export const OBSERVED_PROPERTIES: ReadonlyArray<{ id: number; name: keyof MpvPropertyMap }> = [

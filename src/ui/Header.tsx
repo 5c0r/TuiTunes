@@ -1,7 +1,6 @@
-
 import { TextAttributes } from '@opentui/core';
-import { useTheme } from './useTheme';
 import type { Section } from '../store/ui';
+import { useTheme } from './useTheme';
 
 export interface HeaderProps {
   focused: boolean;
@@ -14,7 +13,16 @@ export interface HeaderProps {
   suggestionsVisible?: boolean;
 }
 
-export function Header({ focused, section, onSearch, onSectionChange: _onSectionChange, onInput, suggestions = [], suggestionIdx = -1, suggestionsVisible = false }: HeaderProps) {
+export function Header({
+  focused,
+  section,
+  onSearch,
+  onSectionChange: _onSectionChange,
+  onInput,
+  suggestions = [],
+  suggestionIdx = -1,
+  suggestionsVisible = false,
+}: HeaderProps) {
   const t = useTheme();
   const placeholder = section === 'podcast' ? 'Search podcasts...' : 'Search music...';
 
@@ -29,7 +37,9 @@ export function Header({ focused, section, onSearch, onSectionChange: _onSection
         paddingLeft={1}
         paddingRight={1}
       >
-        <text fg={t.accent} attributes={TextAttributes.BOLD}>TuiTunes </text>
+        <text fg={t.accent} attributes={TextAttributes.BOLD}>
+          TuiTunes{' '}
+        </text>
         {/* Section tabs */}
         <text
           fg={section === 'music' ? t.accent : t.dim}
@@ -48,7 +58,12 @@ export function Header({ focused, section, onSearch, onSectionChange: _onSection
         </text>
         <text fg={t.dim}> </text>
         <box flexGrow={1}>
-          <input placeholder={placeholder} focused={focused} onSubmit={onSearch as never} onInput={onInput as never} />
+          <input
+            placeholder={placeholder}
+            focused={focused}
+            onSubmit={onSearch as never}
+            onInput={onInput as never}
+          />
         </box>
       </box>
       {suggestionsVisible && suggestions.length > 0 && (
@@ -65,7 +80,8 @@ export function Header({ focused, section, onSearch, onSectionChange: _onSection
               fg={i === suggestionIdx ? t.accent : t.fg}
               attributes={i === suggestionIdx ? TextAttributes.BOLD : 0}
             >
-              {i === suggestionIdx ? '▸ ' : '  '}{s}
+              {i === suggestionIdx ? '▸ ' : '  '}
+              {s}
             </text>
           ))}
         </box>

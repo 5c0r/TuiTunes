@@ -1,4 +1,3 @@
-
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from './useTheme';
 
@@ -14,7 +13,10 @@ export function QuitConfirm({ visible }: QuitConfirmProps) {
   return (
     <box
       position="absolute"
-      top={0} left={0} right={0} bottom={0}
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
       alignItems="center"
       justifyContent="center"
     >
@@ -33,8 +35,12 @@ export function QuitConfirm({ visible }: QuitConfirmProps) {
       >
         <text fg={t.fg}>Are you sure you want to quit?</text>
         <box flexDirection="row" gap={2}>
-          <text fg={t.green} attributes={TextAttributes.BOLD}>[y] Yes</text>
-          <text fg={t.red} attributes={TextAttributes.BOLD}>[n] No</text>
+          <text fg={t.green} attributes={TextAttributes.BOLD}>
+            [y] Yes
+          </text>
+          <text fg={t.red} attributes={TextAttributes.BOLD}>
+            [n] No
+          </text>
           <text fg={t.dim}>[esc] Cancel</text>
         </box>
       </box>

@@ -1,4 +1,3 @@
-
 import { TextAttributes } from '@opentui/core';
 import { useTheme } from './useTheme';
 
@@ -18,7 +17,10 @@ export function TranscriptUrlInput({ visible, value, onInput }: TranscriptUrlInp
   return (
     <box
       position="absolute"
-      top={0} left={0} right={0} bottom={0}
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
       alignItems="center"
       justifyContent="center"
     >
@@ -43,7 +45,7 @@ export function TranscriptUrlInput({ visible, value, onInput }: TranscriptUrlInp
           onInput={onInput}
         />
         <text fg={t.dim} attributes={TextAttributes.DIM}>
-          [Enter] load  [Escape] cancel  [empty + Enter] reset to auto
+          [Enter] load{'  '}[Escape] cancel{'  '}[empty + Enter] reset to auto
         </text>
       </box>
     </box>

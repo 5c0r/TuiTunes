@@ -1,6 +1,6 @@
-import { mkdirSync, appendFileSync } from 'node:fs';
-import * as path from 'node:path';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import * as os from 'node:os';
+import * as path from 'node:path';
 
 const LOG_DIR = path.join(os.homedir(), '.config', 'tuimusic');
 const LOG_PATH = path.join(LOG_DIR, 'debug.log');

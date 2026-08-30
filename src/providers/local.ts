@@ -1,8 +1,8 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { parseFile } from 'music-metadata';
-import type { IProvider, SearchResult, Track } from './types';
 import { Logger } from '../utils/logger';
+import type { IProvider, SearchResult, Track } from './types';
 
 export class LocalProvider implements IProvider {
   readonly id = 'local';
@@ -14,9 +14,7 @@ export class LocalProvider implements IProvider {
   private scanned = false;
 
   constructor(dirs: string[]) {
-    this.dirs = dirs.map((d) =>
-      d.startsWith('~') ? path.join(os.homedir(), d.slice(1)) : d
-    );
+    this.dirs = dirs.map((d) => (d.startsWith('~') ? path.join(os.homedir(), d.slice(1)) : d));
   }
 
   async scan(): Promise<void> {
@@ -59,12 +57,13 @@ export class LocalProvider implements IProvider {
     await this.ensureScanned();
 
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const matched = terms.length === 0
-      ? this.tracks
-      : this.tracks.filter((t) => {
-          const haystack = `${t.title} ${t.artist} ${t.album ?? ''}`.toLowerCase();
-          return terms.every((term) => haystack.includes(term));
-        });
+    const matched =
+      terms.length === 0
+        ? this.tracks
+        : this.tracks.filter((t) => {
+            const haystack = `${t.title} ${t.artist} ${t.album ?? ''}`.toLowerCase();
+            return terms.every((term) => haystack.includes(term));
+          });
 
     return {
       tracks: matched.slice(0, 50),

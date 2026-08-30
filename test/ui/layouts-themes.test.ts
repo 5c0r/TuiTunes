@@ -1,25 +1,25 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
 
 import {
-  LAYOUT_ORDER,
-  nextLayout,
-  LAYOUT_LABELS,
   LAYOUT_DESCRIPTIONS,
+  LAYOUT_LABELS,
+  LAYOUT_ORDER,
   type LayoutPreset,
+  nextLayout,
 } from '../../src/ui/layouts';
 
 import {
+  getTheme,
+  nextTheme,
   THEME_ORDER,
   THEMES,
-  nextTheme,
-  getTheme,
-  type ThemeName,
   type Theme,
+  type ThemeName,
 } from '../../src/ui/themes';
 
 describe('layouts', () => {
@@ -75,8 +75,19 @@ describe('themes', () => {
 
   test('every theme has all required properties', () => {
     const requiredKeys: (keyof Theme)[] = [
-      'name', 'accent', 'bg', 'fg', 'dim', 'green', 'red', 'yellow',
-      'selection', 'border', 'borderActive', 'playing', 'playingFg',
+      'name',
+      'accent',
+      'bg',
+      'fg',
+      'dim',
+      'green',
+      'red',
+      'yellow',
+      'selection',
+      'border',
+      'borderActive',
+      'playing',
+      'playingFg',
     ];
     for (const themeName of THEME_ORDER) {
       const theme = THEMES[themeName];
@@ -108,8 +119,18 @@ describe('themes', () => {
 
   test('all theme colors are hex strings', () => {
     const colorKeys: (keyof Theme)[] = [
-      'accent', 'bg', 'fg', 'dim', 'green', 'red', 'yellow',
-      'selection', 'border', 'borderActive', 'playing', 'playingFg',
+      'accent',
+      'bg',
+      'fg',
+      'dim',
+      'green',
+      'red',
+      'yellow',
+      'selection',
+      'border',
+      'borderActive',
+      'playing',
+      'playingFg',
     ];
     const hexPattern = /^#[0-9a-f]{6}$/i;
     for (const themeName of THEME_ORDER) {

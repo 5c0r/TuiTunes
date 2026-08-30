@@ -1,13 +1,13 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import { createStore } from 'jotai';
 import type { Track } from '../../src/providers/types';
 import {
+  currentTrackAtom,
   queueAtom,
   queueIndexAtom,
   repeatAtom,
   shuffleAtom,
   shuffledIndicesAtom,
-  currentTrackAtom,
 } from '../../src/store/queue';
 
 function makeTrack(n: number): Track {

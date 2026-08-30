@@ -2,15 +2,15 @@
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import { createStore } from 'jotai';
-import { checkDependencies } from './utils/deps';
-import { Logger } from './utils/logger';
-import { loadConfig } from './utils/config';
+import { App } from './app';
+import { initDb } from './db/index';
 import { PlayerController } from './player/controller';
 import { killAllTracked } from './player/process';
-import { playerVolumeAtom } from './store/player';
 import { initProviders } from './providers/registry';
-import { initDb } from './db/index';
-import { App } from './app';
+import { playerVolumeAtom } from './store/player';
+import { loadConfig } from './utils/config';
+import { checkDependencies } from './utils/deps';
+import { Logger } from './utils/logger';
 
 async function main(): Promise<void> {
   Logger.init();

@@ -1,9 +1,8 @@
-
 import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
-import { useTheme } from './useTheme';
-import { playerPositionAtom, playerDurationAtom } from '../store/player';
+import { playerDurationAtom, playerPositionAtom } from '../store/player';
 import { formatTime } from '../utils/format';
+import { useTheme } from './useTheme';
 
 export interface SeekInputProps {
   visible: boolean;
@@ -55,7 +54,10 @@ export function SeekInput({ visible, value, onInput }: SeekInputProps) {
   return (
     <box
       position="absolute"
-      top={0} left={0} right={0} bottom={0}
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
       alignItems="center"
       justifyContent="center"
     >
@@ -77,18 +79,16 @@ export function SeekInput({ visible, value, onInput }: SeekInputProps) {
         </text>
         <box flexDirection="row" gap={1}>
           <text fg={t.fg}>Time: </text>
-          <input
-            focused={true}
-            placeholder="1:30 or 90"
-            value={value}
-            onInput={onInput}
-          />
+          <input focused={true} placeholder="1:30 or 90" value={value} onInput={onInput} />
         </box>
         <text fg={badFormat || outOfRange ? t.red : t.dim} attributes={TextAttributes.DIM}>
-          {badFormat ? 'Invalid format. Use m:ss, h:mm:ss, or seconds'
-            : outOfRange ? `${formatTime(parsed!)} exceeds track length (${formatTime(duration)})`
-            : parsed !== null ? `→ ${formatTime(parsed)}`
-            : 'Enter time as m:ss, h:mm:ss, or seconds'}
+          {badFormat
+            ? 'Invalid format. Use m:ss, h:mm:ss, or seconds'
+            : outOfRange
+              ? `${formatTime(parsed!)} exceeds track length (${formatTime(duration)})`
+              : parsed !== null
+                ? `→ ${formatTime(parsed)}`
+                : 'Enter time as m:ss, h:mm:ss, or seconds'}
         </text>
       </box>
     </box>

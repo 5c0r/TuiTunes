@@ -11,6 +11,14 @@ import type { Podcast } from '../../src/providers/podcast-types';
 import { getProvider, registerProvider } from '../../src/providers/registry';
 import type { IProvider, SearchOptions, SearchResult, Track } from '../../src/providers/types';
 import { YouTubeProvider } from '../../src/providers/youtube';
+import { lyricsDataAtom, lyricsVisibleAtom } from '../../src/store/lyrics';
+import {
+  playerDurationAtom,
+  playerPositionAtom,
+  playerSpeedAtom,
+  playerTrackAtom,
+  playerVolumeAtom,
+} from '../../src/store/player';
 import { podcastSearchLoadingAtom, podcastSearchResultsAtom } from '../../src/store/podcast';
 import {
   focusedPanelAtom,
@@ -523,6 +531,92 @@ test('does not invoke mute while typing in focused search input', async () => {
 
     expect(captureCharFrame()).toContain('m99');
     expect(toggleMuteCalls).toBe(0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('palette transcript search reopens lyrics closed after callback creation', async () => {
+  const store = createStore();
+  store.set(sectionAtom, 'podcast');
+  store.set(playerTrackAtom, newTrack);
+  store.set(lyricsDataAtom, {
+    lines: [{ time: 0, text: 'Needle lyric' }],
+    synced: false,
+    source: 'test',
+  });
+  store.set(lyricsVisibleAtom, true);
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+
+  try {
+    await act(async () => {
+      store.set(lyricsVisibleAtom, false);
+      await renderOnce();
+    });
+    await act(async () => {
+      mockInput.pressKey('p', { ctrl: true });
+      await Promise.resolve();
+    });
+    await renderOnce();
+
+    expect(captureCharFrame()).toContain('Command Palette');
+    await act(async () => {
+      await mockInput.typeText('find');
+    });
+    await renderOnce();
+
+    expect(captureCharFrame()).toContain('Transcript');
+    await act(async () => {
+      mockInput.pressArrow('down');
+      await Promise.resolve();
+    });
+    await renderOnce();
+    await submit(mockInput);
+    await renderOnce();
+
+    expect(captureCharFrame()).toContain('Find:');
+    expect(store.get(lyricsVisibleAtom)).toBe(true);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('renders two spaces between NowPlaying speed and time', async () => {
+  const store = createStore();
+  store.set(playerVolumeAtom, 75);
+  store.set(playerSpeedAtom, 1.5);
+  store.set(playerPositionAtom, 65);
+  store.set(playerDurationAtom, 130);
+  const { captureCharFrame, renderOnce, cleanup } = await renderTestApp(store);
+
+  try {
+    await renderOnce();
+    expect(captureCharFrame()).toContain('🔊75% 1.5x  1:05 / 2:10');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('renders two spaces between transcript URL actions', async () => {
+  const store = createStore();
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+
+  try {
+    await act(async () => {
+      mockInput.pressKey('p', { ctrl: true });
+      await Promise.resolve();
+    });
+    await renderOnce();
+    expect(captureCharFrame()).toContain('Command Palette');
+    await act(async () => {
+      await mockInput.typeText('custom');
+    });
+    await renderOnce();
+    expect(captureCharFrame()).toContain('Custom URL');
+    await submit(mockInput);
+    await renderOnce();
+
+    expect(captureCharFrame()).toContain('[Enter] load  [Escape] cancel');
   } finally {
     await cleanup();
   }

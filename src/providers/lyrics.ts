@@ -1,5 +1,5 @@
-import type { Track } from './types';
 import { Logger } from '../utils/logger';
+import type { Track } from './types';
 
 export interface LyricLine {
   time: number;

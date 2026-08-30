@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
+import { TextAttributes } from '@opentui/core';
+import { useEffect, useRef } from 'react';
 import type { Track } from '../providers/types';
 import { formatTime } from '../utils/format';
 import { useTheme } from './useTheme';

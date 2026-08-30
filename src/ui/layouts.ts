@@ -1,7 +1,20 @@
-export type LayoutPreset = 'default' | 'compact' | 'minimal' | 'split' | 'wide' | 'focus' | 'vertical';
+export type LayoutPreset =
+  | 'default'
+  | 'compact'
+  | 'minimal'
+  | 'split'
+  | 'wide'
+  | 'focus'
+  | 'vertical';
 
 export const LAYOUT_ORDER: LayoutPreset[] = [
-  'default', 'compact', 'minimal', 'split', 'wide', 'focus', 'vertical',
+  'default',
+  'compact',
+  'minimal',
+  'split',
+  'wide',
+  'focus',
+  'vertical',
 ];
 
 export function nextLayout(current: LayoutPreset): LayoutPreset {

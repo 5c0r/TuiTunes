@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import type { Track } from '../../src/providers/types';
 import {
-  shuffleIndices,
+  addToQueue,
   nextIndex,
   prevIndex,
-  addToQueue,
   removeFromQueue,
+  shuffleIndices,
 } from '../../src/store/queue-actions';
 
 const track = (id: string): Track => ({
