@@ -1,6 +1,6 @@
-import type { Podcast, Episode } from './podcast-types';
-import { parseFeed } from './rss';
 import { Logger } from '../utils/logger';
+import type { Episode, Podcast } from './podcast-types';
+import { parseFeed } from './rss';
 
 const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
 const FEED_TIMEOUT_MS = 10_000;
@@ -15,7 +15,7 @@ export class PodcastProvider {
         Logger.error(`iTunes search failed: ${res.status} ${res.statusText}`);
         return [];
       }
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         results: Array<{
           collectionId?: number;
           collectionName?: string;

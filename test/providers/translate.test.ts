@@ -1,9 +1,9 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
-  LingvaProvider,
   DeepLProvider,
-  MyMemoryProvider,
   getTranslationProvider,
+  LingvaProvider,
+  MyMemoryProvider,
 } from '../../src/providers/translate';
 
 // We can't call real APIs in tests, so we test the factory and batch logic patterns.

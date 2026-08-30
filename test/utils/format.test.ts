@@ -1,5 +1,5 @@
-import { describe, test, expect } from 'bun:test';
-import { formatTime, truncateText, padRight } from '../../src/utils/format';
+import { describe, expect, test } from 'bun:test';
+import { formatTime, padRight, truncateText } from '../../src/utils/format';
 
 describe('formatTime', () => {
   test.each([

@@ -26,5 +26,5 @@ export const playerTrackAtom = atom<Track | null>(null);
 /** Playback progress as a fraction 0–1. Zero when duration is unknown. */
 export const playerProgressAtom = atom((get) => {
   const d = get(playerDurationAtom);
-  return d > 0 ? get(playerPositionAtom) / d : 0;
+  return d > 0 ? Math.max(0, Math.min(1, get(playerPositionAtom) / d)) : 0;
 });

@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react';
-import { useAtomValue } from 'jotai';
-import { TextAttributes } from '@opentui/core';
 import type { ScrollBoxRenderable } from '@opentui/core';
-import { useTheme } from './useTheme';
+import { TextAttributes } from '@opentui/core';
+import { useAtomValue } from 'jotai';
+import { useEffect, useRef } from 'react';
+import type { LyricLine } from '../providers/lyrics';
 import { lyricsDataAtom, lyricsLoadingAtom } from '../store/lyrics';
 import { playerPositionAtom } from '../store/player';
-import type { LyricLine } from '../providers/lyrics';
+import { useTheme } from './useTheme';
 
 /**
  * Smart paragraph grouping for podcast transcripts.

@@ -1,7 +1,7 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { parseSrt, parseVtt } from '../../src/providers/subtitle-parser';
 
 mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });

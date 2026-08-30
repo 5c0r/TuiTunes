@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import { runMigrations } from '../../src/db/index';
 import { getTranslation, saveTranslation } from '../../src/db/queries';
-import { parseLrc, type LyricsResult } from '../../src/providers/lyrics';
-import { LingvaProvider, getTranslationProvider } from '../../src/providers/translate';
+import { type LyricsResult, parseLrc } from '../../src/providers/lyrics';
+import { getTranslationProvider, LingvaProvider } from '../../src/providers/translate';
 
 // -- Fixture: First 10 synced lines of "Unravel" by TK from Ling Tosite Sigure --
 // Source: LRCLIB (https://lrclib.net)

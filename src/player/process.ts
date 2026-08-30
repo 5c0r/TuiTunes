@@ -1,9 +1,9 @@
-import type { Subprocess } from 'bun';
-import { unlinkSync, existsSync } from 'node:fs';
-import * as path from 'node:path';
+import { existsSync, unlinkSync } from 'node:fs';
 import * as os from 'node:os';
-import { Logger } from '../utils/logger';
+import * as path from 'node:path';
+import type { Subprocess } from 'bun';
 import { isWSL } from '../utils/deps';
+import { Logger } from '../utils/logger';
 
 // Prefer XDG_RUNTIME_DIR (per-user tmpdir, no cleanup races),
 // fall back to /tmp with a user-scoped name.

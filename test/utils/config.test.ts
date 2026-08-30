@@ -1,11 +1,11 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  DEFAULT_CONFIG,
   CONFIG_DIR,
   CONFIG_PATH,
+  DEFAULT_CONFIG,
   loadConfig,
   saveConfig,
   type TuiTunesConfig,
@@ -78,7 +78,11 @@ describe('config', () => {
 
   test('loadConfig returns defaults when config file is missing', () => {
     // Remove existing config so the catch branch fires
-    try { unlinkSync(CONFIG_PATH); } catch { /* may not exist */ }
+    try {
+      unlinkSync(CONFIG_PATH);
+    } catch {
+      /* may not exist */
+    }
 
     const config = loadConfig();
     expect(config.defaultProvider).toBe(DEFAULT_CONFIG.defaultProvider);

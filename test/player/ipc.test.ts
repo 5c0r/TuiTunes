@@ -1,7 +1,7 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { unlinkSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { Socket } from 'bun';
 import { MpvIPC } from '../../src/player/ipc';
 import { OBSERVED_PROPERTIES } from '../../src/player/types';
@@ -20,14 +20,22 @@ describe('MpvIPC', () => {
 
   beforeEach(async () => {
     socketPath = `/tmp/tuimusic-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`;
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
 
     server = Bun.listen({
       unix: socketPath,
       socket: {
-        open(socket) { serverSockets.push(socket); },
-        data(socket, data) { onServerData(socket, data as Buffer); },
-        close(socket) { serverSockets = serverSockets.filter(s => s !== socket); },
+        open(socket) {
+          serverSockets.push(socket);
+        },
+        data(socket, data) {
+          onServerData(socket, data as Buffer);
+        },
+        close(socket) {
+          serverSockets = serverSockets.filter((s) => s !== socket);
+        },
       },
     });
 
@@ -38,7 +46,9 @@ describe('MpvIPC', () => {
     onServerData = () => {};
     ipc.disconnect();
     server.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
     serverSockets = [];
   });
 
@@ -56,11 +66,13 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       received.push(msg);
-      socket.write(JSON.stringify({
-        error: 'success',
-        data: 42,
-        request_id: msg.request_id,
-      }) + '\n');
+      socket.write(
+        JSON.stringify({
+          error: 'success',
+          data: 42,
+          request_id: msg.request_id,
+        }) + '\n',
+      );
     };
 
     await ipc.connect(socketPath);
@@ -79,16 +91,17 @@ describe('MpvIPC', () => {
   test('command rejects on mpv error', async () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
-      socket.write(JSON.stringify({
-        error: 'property unavailable',
-        request_id: msg.request_id,
-      }) + '\n');
+      socket.write(
+        JSON.stringify({
+          error: 'property unavailable',
+          request_id: msg.request_id,
+        }) + '\n',
+      );
     };
 
     await ipc.connect(socketPath);
 
-    await expect(ipc.command('get_property', 'bogus'))
-      .rejects.toThrow('property unavailable');
+    await expect(ipc.command('get_property', 'bogus')).rejects.toThrow('property unavailable');
   });
 
   test('buffer splitting — partial messages', async () => {
@@ -121,18 +134,17 @@ describe('MpvIPC', () => {
       // Wait for both commands to arrive before replying
       if (messages.length === 2) {
         const combined =
-          JSON.stringify({ error: 'success', data: 1, request_id: messages[0].request_id }) + '\n' +
-          JSON.stringify({ error: 'success', data: 2, request_id: messages[1].request_id }) + '\n';
+          JSON.stringify({ error: 'success', data: 1, request_id: messages[0].request_id }) +
+          '\n' +
+          JSON.stringify({ error: 'success', data: 2, request_id: messages[1].request_id }) +
+          '\n';
         socket.write(combined);
       }
     };
 
     await ipc.connect(socketPath);
 
-    const [r1, r2] = await Promise.all([
-      ipc.command('cmd1'),
-      ipc.command('cmd2'),
-    ]);
+    const [r1, r2] = await Promise.all([ipc.command('cmd1'), ipc.command('cmd2')]);
 
     expect(r1).toBe(1);
     expect(r2).toBe(2);
@@ -185,9 +197,7 @@ describe('MpvIPC', () => {
     });
 
     await Bun.sleep(20);
-    serverSockets[0].write(
-      JSON.stringify({ event: 'end-file', reason: 'eof' }) + '\n',
-    );
+    serverSockets[0].write(JSON.stringify({ event: 'end-file', reason: 'eof' }) + '\n');
 
     await Bun.sleep(50);
     expect(captured).toEqual(expect.objectContaining({ event: 'end-file', reason: 'eof' }));
@@ -200,7 +210,9 @@ describe('MpvIPC', () => {
     await ipc.connect(socketPath);
 
     let disconnectFired = false;
-    ipc.onDisconnect(() => { disconnectFired = true; });
+    ipc.onDisconnect(() => {
+      disconnectFired = true;
+    });
 
     // Send a command that will never get a response
     const cmdPromise = ipc.command('get_property', 'volume');
@@ -230,7 +242,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.loadfile('http://example.com/track.mp3');
@@ -242,7 +256,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.loadfile('http://example.com/track.mp3', 'append-play');
@@ -254,7 +270,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.setPause(true);
@@ -266,7 +284,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.togglePause();
@@ -278,7 +298,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.seek(10);
@@ -290,7 +312,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.seek(90, 'absolute+exact');
@@ -302,7 +326,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.setVolume(-10);
@@ -314,7 +340,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.setVolume(200);
@@ -326,7 +354,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.setVolume(80);
@@ -338,7 +368,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.addVolume(5);
@@ -350,7 +382,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.toggleMute();
@@ -362,7 +396,9 @@ describe('MpvIPC', () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     await ipc.stop();
@@ -372,7 +408,9 @@ describe('MpvIPC', () => {
   test('getProperty returns value', async () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
-      socket.write(JSON.stringify({ error: 'success', data: 75, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: 75, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     const vol = await ipc.getProperty('volume');
@@ -382,7 +420,9 @@ describe('MpvIPC', () => {
   test('quit disconnects after sending', async () => {
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
-      socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+      socket.write(
+        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+      );
     };
     await ipc.connect(socketPath);
     expect(ipc.connected).toBe(true);
@@ -399,14 +439,20 @@ describe('MpvIPC', () => {
         if (Array.isArray(msg.command) && msg.command[0] === 'observe_property') {
           commands.push(msg.command);
         }
-        socket.write(JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n');
+        socket.write(
+          JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+        );
       }
     };
     await ipc.connect(socketPath);
     await ipc.observeAll();
     expect(commands.length).toBe(OBSERVED_PROPERTIES.length);
     for (let i = 0; i < OBSERVED_PROPERTIES.length; i++) {
-      expect(commands[i]).toEqual(['observe_property', OBSERVED_PROPERTIES[i].id, OBSERVED_PROPERTIES[i].name]);
+      expect(commands[i]).toEqual([
+        'observe_property',
+        OBSERVED_PROPERTIES[i].id,
+        OBSERVED_PROPERTIES[i].name,
+      ]);
     }
   });
 });

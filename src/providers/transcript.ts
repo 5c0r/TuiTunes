@@ -1,10 +1,10 @@
+import { unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { unlink } from 'node:fs/promises';
+import { Logger } from '../utils/logger';
 import type { LyricLine } from './lyrics';
 import type { Episode } from './podcast-types';
 import { parseSrt, parseVtt } from './subtitle-parser';
-import { Logger } from '../utils/logger';
 
 export interface TranscriptResult {
   lines: LyricLine[];
@@ -52,13 +52,15 @@ async function fetchFromUrl(url: string): Promise<LyricLine[]> {
   return parseSrt(text);
 }
 
-async function fetchFromYoutube(episode: Episode): Promise<{ lines: LyricLine[]; videoUrl: string } | null> {
+async function fetchFromYoutube(
+  episode: Episode,
+): Promise<{ lines: LyricLine[]; videoUrl: string } | null> {
   const searchQuery = `${episode.podcastTitle ?? ''} ${episode.title}`.trim();
 
   // Find the video via yt-dlp JSON dump
   const searchProc = Bun.spawn(
     ['yt-dlp', '--dump-json', '--default-search', 'ytsearch1', searchQuery],
-    { stdout: 'pipe', stderr: 'pipe', timeout: 30_000 }
+    { stdout: 'pipe', stderr: 'pipe', timeout: 30_000 },
   );
   const searchOutput = await new Response(searchProc.stdout).text();
   const searchExit = await searchProc.exited;
@@ -87,18 +89,21 @@ async function fetchFromYoutube(episode: Episode): Promise<{ lines: LyricLine[];
       [
         'yt-dlp',
         '--write-auto-sub',
-        '--sub-lang', 'en',
-        '--sub-format', 'srt',
+        '--sub-lang',
+        'en',
+        '--sub-format',
+        'srt',
         '--skip-download',
-        '-o', tempBase,
+        '-o',
+        tempBase,
         videoUrl,
       ],
-      { stdout: 'pipe', stderr: 'pipe', timeout: 30_000 }
+      { stdout: 'pipe', stderr: 'pipe', timeout: 30_000 },
     );
     await subProc.exited;
 
     const srtFile = Bun.file(srtPath);
-    if (!await srtFile.exists()) {
+    if (!(await srtFile.exists())) {
       Logger.debug(`No subtitle file generated for ${videoId}`);
       return null;
     }

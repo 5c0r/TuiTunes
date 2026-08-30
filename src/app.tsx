@@ -1,94 +1,97 @@
-import { TextAttributes, type KeyEvent, type ScrollBoxRenderable } from '@opentui/core';
-import type React from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyEvent, type ScrollBoxRenderable, TextAttributes } from '@opentui/core';
+import { useKeyboard } from '@opentui/react';
 import { Provider, useAtomValue, useSetAtom } from 'jotai';
 import type { Store } from 'jotai/vanilla/store';
-import { useKeyboard } from '@opentui/react';
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { filterCommands } from './commands';
+import { getDb } from './db/index';
+import {
+  addFavorite,
+  getFavorites,
+  getHistory,
+  getSubscribedFeeds,
+  getTranslation,
+  isSubscribed,
+  removeFavorite,
+  saveTranslation,
+  subscribeFeed,
+  unsubscribeFeed,
+} from './db/queries';
 import type { PlayerController } from './player/controller';
+import { fetchLyrics, type LyricsResult } from './providers/lyrics';
+import { podcastProvider } from './providers/podcast';
+import { extractYouTubeSrt, findYouTubeVideoId, youtubeUrl } from './providers/podcast-youtube';
+import { getActiveProvider } from './providers/registry';
+import { parseSrt, parseVtt } from './providers/subtitle-parser';
+import { fetchTranscript } from './providers/transcript';
+import { getTranslationProvider } from './providers/translate';
+import type { Track } from './providers/types';
+import { getTranslatedTranscript } from './providers/youtube';
+import { favoritesAtom, favoritesSetAtom, historyAtom } from './store/library';
+import {
+  lyricsDataAtom,
+  lyricsLoadingAtom,
+  lyricsVisibleAtom,
+  transcriptSourceAtom,
+  translationEnabledAtom,
+  translationLoadingAtom,
+} from './store/lyrics';
 import { playerTrackAtom } from './store/player';
 import {
-  searchResultsAtom,
-  searchLoadingAtom,
-  focusedPanelAtom,
-  sectionAtom,
-  musicViewAtom,
-  podcastViewAtom as podcastViewAtomUI,
-  layoutAtom,
-  themeNameAtom,
-  searchPageAtom,
-  searchHasMoreAtom,
-  searchContinuationAtom,
-  searchSuggestionsAtom,
-  suggestionSelectedIdxAtom,
-  suggestionsVisibleAtom,
-  type MusicView,
-  type PodcastView,
-} from './store/ui';
-import { nextLayout } from './ui/layouts';
+  episodesLoadingAtom,
+  podcastEpisodesAtom,
+  podcastSearchLoadingAtom,
+  podcastSearchResultsAtom,
+  selectedPodcastAtom,
+  subscribedFeedsAtom,
+} from './store/podcast';
 import {
+  playingFromQueueAtom,
   queueAtom,
   queueIndexAtom,
   repeatAtom,
   shuffleAtom,
   shuffledIndicesAtom,
-  playingFromQueueAtom,
 } from './store/queue';
-import type { Track } from './providers/types';
-import { getActiveProvider } from './providers/registry';
-import { nextIndex, prevIndex, shuffleIndices, removeFromQueue } from './store/queue-actions';
-import { Header } from './ui/Header';
-import { TrackList } from './ui/TrackList';
-import { Sidebar } from './ui/Sidebar';
-import { NowPlaying } from './ui/NowPlaying';
-import { HelpOverlay } from './ui/HelpOverlay';
-import { QuitConfirm } from './ui/QuitConfirm';
+import { nextIndex, prevIndex, removeFromQueue, shuffleIndices } from './store/queue-actions';
+import {
+  focusedPanelAtom,
+  layoutAtom,
+  type MusicView,
+  musicViewAtom,
+  type PodcastView,
+  podcastViewAtom as podcastViewAtomUI,
+  searchContinuationAtom,
+  searchHasMoreAtom,
+  searchLoadingAtom,
+  searchPageAtom,
+  searchResultsAtom,
+  searchSuggestionsAtom,
+  sectionAtom,
+  suggestionSelectedIdxAtom,
+  suggestionsVisibleAtom,
+  themeNameAtom,
+} from './store/ui';
 import { CommandPalette } from './ui/CommandPalette';
-import { useTheme } from './ui/useTheme';
-import { nextTheme } from './ui/themes';
-import { filterCommands } from './commands';
+import { Header } from './ui/Header';
+import { HelpOverlay } from './ui/HelpOverlay';
 import { Lyrics } from './ui/Lyrics';
+import { nextLayout } from './ui/layouts';
+import { NowPlaying } from './ui/NowPlaying';
+import { QuitConfirm } from './ui/QuitConfirm';
+import { parseTimeInput, SeekInput } from './ui/SeekInput';
+import { Sidebar } from './ui/Sidebar';
+import { TrackList } from './ui/TrackList';
 import { Transcript } from './ui/Transcript';
-import { SeekInput, parseTimeInput } from './ui/SeekInput';
 import { TranscriptUrlInput } from './ui/TranscriptUrlInput';
 import { TranslationLanguageInput } from './ui/TranslationLanguageInput';
-import {
-  lyricsVisibleAtom,
-  lyricsDataAtom,
-  lyricsLoadingAtom,
-  transcriptSourceAtom,
-  translationEnabledAtom,
-  translationLoadingAtom,
-} from './store/lyrics';
-import { fetchLyrics, type LyricsResult } from './providers/lyrics';
-import { podcastProvider } from './providers/podcast';
-import { fetchTranscript } from './providers/transcript';
-import { findYouTubeVideoId, youtubeUrl, extractYouTubeSrt } from './providers/podcast-youtube';
-import { parseSrt, parseVtt } from './providers/subtitle-parser';
-import { searchTranscript } from './utils/transcript-search';
-import {
-  podcastSearchResultsAtom,
-  podcastSearchLoadingAtom,
-  selectedPodcastAtom,
-  podcastEpisodesAtom,
-  episodesLoadingAtom,
-  subscribedFeedsAtom,
-} from './store/podcast';
-import {
-  subscribeFeed,
-  unsubscribeFeed,
-  getSubscribedFeeds,
-  isSubscribed,
-  getTranslation,
-  saveTranslation,
-} from './db/queries';
-import { Logger } from './utils/logger';
-import { getDb } from './db/index';
-import { addFavorite, removeFavorite, getFavorites, getHistory } from './db/queries';
-import { favoritesSetAtom, favoritesAtom, historyAtom } from './store/library';
-import { formatTime } from './utils/format';
+import { nextTheme } from './ui/themes';
+import { useTheme } from './ui/useTheme';
 import { loadConfig, saveConfig } from './utils/config';
-import { getTranslationProvider } from './providers/translate';
-import { getTranslatedTranscript } from './providers/youtube';
+import { formatTime } from './utils/format';
+import { Logger } from './utils/logger';
+import { searchTranscript } from './utils/transcript-search';
 
 interface AppProps {
   store: Store;
@@ -420,6 +423,10 @@ function AppInner({
   // -- Handlers --
 
   const suggestionsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const musicSearchRequestIdRef = useRef(0);
+  const podcastSearchRequestIdRef = useRef(0);
+  const musicSearchInFlightRef = useRef(false);
+  const loadMoreInFlightRef = useRef<number | null>(null);
 
   const fetchSuggestions = useCallback(
     async (query: string) => {
@@ -454,6 +461,7 @@ function AppInner({
   const handleSearch = useCallback(
     async (query: string) => {
       if (!query.trim()) return;
+
       setSuggestions([]);
       setSuggestionsVisible(false);
       setFocusedPanel('main');
@@ -461,27 +469,35 @@ function AppInner({
 
       // Podcast search when in podcast view
       if (section === 'podcast') {
+        const requestId = ++podcastSearchRequestIdRef.current;
         setPodcastSearchLoading(true);
         try {
           const podcasts = await podcastProvider.searchPodcasts(query);
+          if (requestId !== podcastSearchRequestIdRef.current) return;
+
           setPodcastSearchResults(podcasts);
           setPodcastView('search');
           Logger.info(`Podcast search '${query}': ${podcasts.length} results`);
         } catch (err) {
           Logger.error(`Podcast search failed: ${err}`);
         } finally {
-          setPodcastSearchLoading(false);
+          if (requestId === podcastSearchRequestIdRef.current) setPodcastSearchLoading(false);
         }
         return;
       }
 
       // Music search (YouTube)
+      const requestId = ++musicSearchRequestIdRef.current;
+      musicSearchInFlightRef.current = true;
+
       setSearchLoading(true);
       setMusicView('search');
       setSearchPage(1);
       try {
         const provider = getActiveProvider();
         const results = await provider.search(query);
+        if (requestId !== musicSearchRequestIdRef.current) return;
+
         setSearchResults(results);
         setSearchHasMore(results.hasMore);
         setSearchContinuation(results.continuation ?? null);
@@ -489,7 +505,10 @@ function AppInner({
       } catch (err) {
         Logger.error(`Search failed: ${err}`);
       } finally {
-        setSearchLoading(false);
+        if (requestId === musicSearchRequestIdRef.current) {
+          musicSearchInFlightRef.current = false;
+          setSearchLoading(false);
+        }
       }
     },
     [
@@ -504,15 +523,29 @@ function AppInner({
       setPodcastSearchResults,
       setPodcastSearchLoading,
       setPodcastView,
+      setSuggestions,
+      setSuggestionsVisible,
     ],
   );
 
   const handleLoadMore = useCallback(async () => {
-    if (!searchHasMore || !searchContinuation) return;
+    if (
+      !searchHasMore ||
+      !searchContinuation ||
+      musicSearchInFlightRef.current ||
+      loadMoreInFlightRef.current === musicSearchRequestIdRef.current
+    ) {
+      return;
+    }
+    const requestId = musicSearchRequestIdRef.current;
+    loadMoreInFlightRef.current = requestId;
+
     setSearchLoading(true);
     try {
       const provider = getActiveProvider();
       const results = await provider.search('', { continuation: searchContinuation });
+      if (requestId !== musicSearchRequestIdRef.current) return;
+
       const existing = searchResults?.tracks ?? [];
       setSearchResults({ ...results, tracks: [...existing, ...results.tracks] });
       setSearchHasMore(results.hasMore);
@@ -522,7 +555,8 @@ function AppInner({
     } catch (err) {
       Logger.error(`Load more failed: ${err}`);
     } finally {
-      setSearchLoading(false);
+      if (loadMoreInFlightRef.current === requestId) loadMoreInFlightRef.current = null;
+      if (requestId === musicSearchRequestIdRef.current) setSearchLoading(false);
     }
   }, [
     searchHasMore,
@@ -963,6 +997,8 @@ function AppInner({
       setTranslationEnabled,
       translationEnabled,
       lyricsData,
+      lyricsVisible,
+      setThemeName,
     ],
   );
 

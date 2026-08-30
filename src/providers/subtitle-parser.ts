@@ -15,7 +15,11 @@ export function parseSrt(text: string): LyricLine[] {
       parseInt(timeMatch[2], 10) * 60 +
       parseInt(timeMatch[3], 10) +
       parseInt(timeMatch[4], 10) / 1000;
-    const lineText = parts.slice(2).join(' ').replace(/<[^>]+>/g, '').trim();
+    const lineText = parts
+      .slice(2)
+      .join(' ')
+      .replace(/<[^>]+>/g, '')
+      .trim();
     if (lineText) lines.push({ time, text: lineText });
   }
   return lines;
@@ -27,7 +31,8 @@ export function parseVtt(text: string): LyricLine[] {
   const blocks = text.trim().split(/\n\n+/);
   for (const block of blocks) {
     // Skip header and metadata blocks
-    if (block.startsWith('WEBVTT') || block.startsWith('Kind:') || block.startsWith('Language:')) continue;
+    if (block.startsWith('WEBVTT') || block.startsWith('Kind:') || block.startsWith('Language:'))
+      continue;
     const parts = block.split('\n');
     // Find the timestamp line — may or may not have an index before it
     let timeLine = '';
@@ -47,7 +52,11 @@ export function parseVtt(text: string): LyricLine[] {
       parseInt(timeMatch[2], 10) * 60 +
       parseInt(timeMatch[3], 10) +
       parseInt(timeMatch[4], 10) / 1000;
-    const lineText = parts.slice(textStartIdx).join(' ').replace(/<[^>]+>/g, '').trim();
+    const lineText = parts
+      .slice(textStartIdx)
+      .join(' ')
+      .replace(/<[^>]+>/g, '')
+      .trim();
     if (lineText) lines.push({ time, text: lineText });
   }
   return lines;

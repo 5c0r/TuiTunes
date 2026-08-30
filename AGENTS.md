@@ -2,7 +2,7 @@
 
 ## Project Summary
 
-TuiTunes is a terminal music player + podcast client built on OpenTUI (Zig native rendering + React 19) with mpv as the playback engine. 45 source files, 92 tests, strict TypeScript.
+TuiTunes is a terminal music player + podcast client built on OpenTUI (Zig native rendering + React 19) with mpv as the playback engine. 45 source files, strict TypeScript.
 
 **Runtime**: Bun 1.3+ | **TUI**: OpenTUI 0.1.96 | **Playback**: mpv + yt-dlp | **State**: Jotai v2 | **DB**: bun:sqlite
 
@@ -11,7 +11,7 @@ TuiTunes is a terminal music player + podcast client built on OpenTUI (Zig nativ
 ```bash
 bun run start        # Launch
 bun run dev          # Watch mode
-bun test             # 92 tests
+bun test             # Test suite
 bunx tsc --noEmit    # Type check
 bun build --compile --minify src/index.tsx --outfile dist/tuimusic  # Binary
 ```
@@ -261,5 +261,6 @@ Before any feature change, check these:
 | Queue atoms | currentTrackAtom with shuffle | test/store/queue.test.ts |
 | Queue actions | shuffle, next/prev, add/remove | test/store/queue-actions.test.ts |
 | DB queries | Favorites CRUD, history, in-memory SQLite | test/db/queries.test.ts |
+| App search | Fresh and continuation stale results/loading | test/ui/app-search.test.tsx |
 
 IPC tests use a real mock Unix socket server (`Bun.listen({unix:})`). DB tests use `:memory:`. No mocks for external APIs.

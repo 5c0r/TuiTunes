@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import type { Podcast, Episode } from '../providers/podcast-types';
+import type { Episode, Podcast } from '../providers/podcast-types';
 
 /** Podcast search results from iTunes. */
 export const podcastSearchResultsAtom = atom<Podcast[]>([]);
@@ -18,4 +18,3 @@ export const episodesLoadingAtom = atom(false);
 
 /** User's subscribed podcast feeds (loaded from DB). */
 export const subscribedFeedsAtom = atom<Podcast[]>([]);
-

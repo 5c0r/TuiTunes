@@ -1,9 +1,9 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
   isMpvEvent,
   isMpvResponse,
-  OBSERVED_PROPERTIES,
   type MpvMessage,
+  OBSERVED_PROPERTIES,
 } from '../../src/player/types';
 
 describe('isMpvEvent', () => {
@@ -18,7 +18,13 @@ describe('isMpvEvent', () => {
   });
 
   test('true for hybrid msg with both event and request_id — event takes precedence', () => {
-    const msg = { event: 'property-change', request_id: 1, id: 1, name: 'pause', data: true } as MpvMessage;
+    const msg = {
+      event: 'property-change',
+      request_id: 1,
+      id: 1,
+      name: 'pause',
+      data: true,
+    } as MpvMessage;
     expect(isMpvEvent(msg)).toBe(true);
   });
 
@@ -45,7 +51,13 @@ describe('isMpvResponse', () => {
   });
 
   test('false for hybrid message (has both event and request_id)', () => {
-    const msg = { event: 'property-change', request_id: 1, id: 1, name: 'pause', data: true } as MpvMessage;
+    const msg = {
+      event: 'property-change',
+      request_id: 1,
+      id: 1,
+      name: 'pause',
+      data: true,
+    } as MpvMessage;
     expect(isMpvResponse(msg)).toBe(false);
   });
 });

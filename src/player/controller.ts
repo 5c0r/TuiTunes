@@ -1,20 +1,20 @@
 import type { Store } from 'jotai/vanilla/store';
-import { MpvIPC } from './ipc';
-import { spawnMpv, killMpv, SOCKET_PATH } from './process';
-import type { MpvEvent, } from './types';
-import type { Track } from '../providers/types';
 import { getDb } from '../db/index';
 import { addToHistory } from '../db/queries';
+import type { Track } from '../providers/types';
 import {
-  playerPositionAtom,
   playerDurationAtom,
-  playerVolumeAtom,
   playerMuteAtom,
+  playerPositionAtom,
   playerSpeedAtom,
   playerStateAtom,
   playerTrackAtom,
+  playerVolumeAtom,
 } from '../store/player';
 import { Logger } from '../utils/logger';
+import { MpvIPC } from './ipc';
+import { killMpv, SOCKET_PATH, spawnMpv } from './process';
+import type { MpvEvent } from './types';
 
 /**
  * High-level playback controller.
@@ -177,10 +177,7 @@ export class PlayerController {
         this.store.set(playerDurationAtom, value as number);
         break;
       case 'pause':
-        this.store.set(
-          playerStateAtom,
-          (value as boolean) ? 'paused' : 'playing'
-        );
+        this.store.set(playerStateAtom, (value as boolean) ? 'paused' : 'playing');
         break;
       case 'volume':
         this.store.set(playerVolumeAtom, value as number);
