@@ -12,6 +12,10 @@ export function getProvider(id: string): IProvider | undefined {
   return providers.get(id);
 }
 
+export function unregisterProvider(id: string): void {
+  providers.delete(id);
+}
+
 export function getActiveProvider(): IProvider {
   const first = providers.values().next();
   if (first.done) {

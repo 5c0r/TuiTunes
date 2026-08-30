@@ -8,9 +8,8 @@ import { App } from '../../src/app';
 import type { PlayerController } from '../../src/player/controller';
 import { podcastProvider } from '../../src/providers/podcast';
 import type { Podcast } from '../../src/providers/podcast-types';
-import { getProvider, registerProvider } from '../../src/providers/registry';
+import { getProvider, registerProvider, unregisterProvider } from '../../src/providers/registry';
 import type { IProvider, SearchOptions, SearchResult, Track } from '../../src/providers/types';
-import { YouTubeProvider } from '../../src/providers/youtube';
 import { lyricsDataAtom, lyricsVisibleAtom } from '../../src/store/lyrics';
 import {
   playerDurationAtom,
@@ -104,6 +103,7 @@ async function cleanupTestApp(
       }
     } finally {
       if (originalProvider) registerProvider(originalProvider);
+      else unregisterProvider('youtube');
     }
   }
 }
@@ -114,11 +114,7 @@ async function renderTestApp(store: Store, controller = defaultController) {
   let renderOnce: (() => Promise<void>) | undefined;
   try {
     originalProvider = getProvider('youtube');
-    if (!originalProvider) {
-      originalProvider = new YouTubeProvider();
-      registerProvider(originalProvider);
-    }
-    registerProvider({ ...provider, id: originalProvider.id });
+    registerProvider({ ...provider, id: 'youtube' });
     const setup = await testRender(
       <App store={store} controller={controller} onQuit={() => {}} />,
       { width: 100, height: 30 },
@@ -134,6 +130,21 @@ async function renderTestApp(store: Store, controller = defaultController) {
     throw error;
   }
 }
+
+test('leaves an empty YouTube provider registry unchanged after cleanup', async () => {
+  const originalProvider = getProvider('youtube');
+  unregisterProvider('youtube');
+
+  try {
+    const { cleanup } = await renderTestApp(createStore());
+    await cleanup();
+
+    expect(getProvider('youtube')).toBeUndefined();
+  } finally {
+    if (originalProvider) registerProvider(originalProvider);
+    else unregisterProvider('youtube');
+  }
+});
 
 async function submit(mockInput: MockInput): Promise<void> {
   await act(async () => {
