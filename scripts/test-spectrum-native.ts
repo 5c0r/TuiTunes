@@ -92,7 +92,8 @@ try {
     cmd: [sanitizedBinary],
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, ASAN_OPTIONS: 'detect_leaks=1', UBSAN_OPTIONS: 'halt_on_error=1' },
+    // Apple Clang's ASan runtime does not provide LeakSanitizer here.
+    env: { ...process.env, ASAN_OPTIONS: 'detect_leaks=0', UBSAN_OPTIONS: 'halt_on_error=1' },
   });
   process.stdout.write(sanitizedRun.stdout.toString());
   if (sanitizedRun.exitCode !== 0) {
