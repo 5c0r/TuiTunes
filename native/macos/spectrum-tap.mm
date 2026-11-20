@@ -19,6 +19,7 @@
 // disconnect (SIGPIPE ignored; stdout write errors) all unwind through the
 // same teardown: bounded writer drain, then reverse-order destruction.
 
+#import <CoreAudio/AudioHardwareTapping.h>
 #import <CoreAudio/CoreAudio.h>
 #import <CoreAudio/CATapDescription.h>
 #import <Foundation/Foundation.h>
@@ -174,7 +175,7 @@ struct CFScope {
 struct AudioPipeline {
   TapSession session;
   // Frozen by strict validation before the IOProc can ever run; the
-  realtime thread only reads it.
+  // realtime thread only reads it.
   tuitunes::PcmShape shape;
   tuitunes::SpscRingBuffer ring{kRingBytes};
   std::atomic<size_t> droppedBytes{0};
@@ -303,7 +304,7 @@ OSStatus FindProcessObject(uint32_t pid, AudioObjectID* outObject) {
   }
   if (matches != 1) {
     *outObject = kAudioObjectUnknown;
-    return matches == 0 ? kAudioHardwareObjectDoesNotExistError : kAudioHardwareIllegalOperationError;
+    return matches == 0 ? kAudioHardwareBadObjectError : kAudioHardwareIllegalOperationError;
   }
   *outObject = match;
   return noErr;
