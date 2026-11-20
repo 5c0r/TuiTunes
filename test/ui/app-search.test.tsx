@@ -1,21 +1,22 @@
 import { expect, test } from 'bun:test';
-import type { MockInput, TestRenderer } from '@opentui/core/testing';
-import { testRender } from '@opentui/react/test-utils';
+import type { MockInput } from '@opentui/core/testing';
 import { createStore } from 'jotai';
 import type { Store } from 'jotai/vanilla/store';
 import { act } from 'react';
-import { App } from '../../src/app';
-import type { PlayerController } from '../../src/player/controller';
-import { podcastProvider } from '../../src/providers/podcast';
+import type { PlayerPort } from '../../src/player/controller';
 import type { Podcast } from '../../src/providers/podcast-types';
-import { getProvider, registerProvider, unregisterProvider } from '../../src/providers/registry';
-import type { IProvider, SearchOptions, SearchResult, Track } from '../../src/providers/types';
-import { lyricsDataAtom, lyricsVisibleAtom } from '../../src/store/lyrics';
+import type {
+  IProvider,
+  SearchContinuation,
+  SearchOptions,
+  SearchResult,
+  Track,
+} from '../../src/providers/types';
+import { lyricsDocumentAtom, lyricsVisibleAtom } from '../../src/store/lyrics';
 import {
   playerDurationAtom,
   playerPositionAtom,
   playerSpeedAtom,
-  playerTrackAtom,
   playerVolumeAtom,
 } from '../../src/store/player';
 import { podcastSearchLoadingAtom, podcastSearchResultsAtom } from '../../src/store/podcast';
@@ -26,10 +27,13 @@ import {
   searchResultsAtom,
   sectionAtom,
 } from '../../src/store/ui';
+import { createDeferredPodcasts, itunesSearchBody, renderTestApp } from '../helpers/app';
+import { createTestPlayer } from '../helpers/player';
 
 const oldTrack: Track = {
   id: 'old',
   provider: 'app-search-test',
+  source: { kind: 'youtube', videoId: 'old' },
   title: 'Old result',
   artist: 'Test artist',
   duration: 0,
@@ -37,6 +41,7 @@ const oldTrack: Track = {
 const newTrack: Track = {
   id: 'new',
   provider: 'app-search-test',
+  source: { kind: 'youtube', videoId: 'new' },
   title: 'New result',
   artist: 'Test artist',
   duration: 0,
@@ -44,6 +49,7 @@ const newTrack: Track = {
 const baseTrack: Track = {
   id: 'base',
   provider: 'app-search-test',
+  source: { kind: 'youtube', videoId: 'base' },
   title: 'Base result',
   artist: 'Test artist',
   duration: 0,
@@ -51,6 +57,7 @@ const baseTrack: Track = {
 const pageTrack: Track = {
   id: 'page',
   provider: 'app-search-test',
+  source: { kind: 'youtube', videoId: 'page' },
   title: 'Page result',
   artist: 'Test artist',
   duration: 0,
@@ -76,75 +83,6 @@ const provider: IProvider = {
   getTrack: async () => newTrack,
   getStreamUrl: async () => '',
 };
-
-const defaultController = { onTrackEnd: () => {} } as unknown as PlayerController;
-
-async function flushPendingSearches(renderOnce?: () => Promise<void>): Promise<void> {
-  await act(async () => {
-    for (const { resolve } of pendingSearches) resolve({ tracks: [], hasMore: false });
-    await Bun.sleep(0);
-    if (renderOnce) await renderOnce();
-  });
-}
-
-async function cleanupTestApp(
-  renderer: TestRenderer | undefined,
-  renderOnce: (() => Promise<void>) | undefined,
-  originalProvider: IProvider | undefined,
-): Promise<void> {
-  try {
-    await flushPendingSearches(renderOnce);
-  } finally {
-    try {
-      if (renderer) {
-        await act(async () => {
-          renderer.destroy();
-        });
-      }
-    } finally {
-      if (originalProvider) registerProvider(originalProvider);
-      else unregisterProvider('youtube');
-    }
-  }
-}
-
-async function renderTestApp(store: Store, controller = defaultController) {
-  let originalProvider: IProvider | undefined;
-  let renderer: TestRenderer | undefined;
-  let renderOnce: (() => Promise<void>) | undefined;
-  try {
-    originalProvider = getProvider('youtube');
-    registerProvider({ ...provider, id: 'youtube' });
-    const setup = await testRender(
-      <App store={store} controller={controller} onQuit={() => {}} />,
-      { width: 100, height: 30 },
-    );
-    renderer = setup.renderer;
-    renderOnce = setup.renderOnce;
-    return {
-      ...setup,
-      cleanup: async () => cleanupTestApp(renderer, renderOnce, originalProvider),
-    };
-  } catch (error) {
-    await cleanupTestApp(renderer, renderOnce, originalProvider);
-    throw error;
-  }
-}
-
-test('leaves an empty YouTube provider registry unchanged after cleanup', async () => {
-  const originalProvider = getProvider('youtube');
-  unregisterProvider('youtube');
-
-  try {
-    const { cleanup } = await renderTestApp(createStore());
-    await cleanup();
-
-    expect(getProvider('youtube')).toBeUndefined();
-  } finally {
-    if (originalProvider) registerProvider(originalProvider);
-    else unregisterProvider('youtube');
-  }
-});
 
 async function submit(mockInput: MockInput): Promise<void> {
   await act(async () => {
@@ -199,7 +137,10 @@ test('ignores an old music result while a newer search remains pending', async (
   pendingSearches.length = 0;
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
-  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp({
+    store,
+    music: provider,
+  });
 
   try {
     await typeAndSubmit(mockInput, renderOnce, 'old');
@@ -227,79 +168,60 @@ test('ignores an old music result while a newer search remains pending', async (
 
 test('ignores an old podcast result while a newer search remains pending', async () => {
   const oldPodcast: Podcast = {
-    id: 'old-podcast',
+    id: '101',
     title: 'Old podcast',
     author: 'Test author',
     feedUrl: 'https://example.test/old.xml',
   };
   const newPodcast: Podcast = {
-    id: 'new-podcast',
+    id: '202',
     title: 'New podcast',
     author: 'Test author',
     feedUrl: 'https://example.test/new.xml',
   };
-  const pendingPodcasts: Array<{ query: string; resolve: (podcasts: Podcast[]) => void }> = [];
-  const originalSearchPodcasts = podcastProvider.searchPodcasts;
+  const { provider: podcasts, requests } = createDeferredPodcasts();
   const store = createStore();
   store.set(sectionAtom, 'podcast');
   store.set(focusedPanelAtom, 'search');
-  let renderOnce: (() => Promise<void>) | undefined;
-  let cleanup: (() => Promise<void>) | undefined;
+  const { mockInput, renderOnce, cleanup } = await renderTestApp({ store, podcasts });
 
   try {
-    podcastProvider.searchPodcasts = (query) =>
-      new Promise((resolve) => {
-        pendingPodcasts.push({ query, resolve });
-      });
-    const setup = await renderTestApp(store);
-    const { mockInput, renderOnce: activeRenderOnce } = setup;
-    renderOnce = activeRenderOnce;
-    cleanup = setup.cleanup;
-
-    await typeAndSubmit(mockInput, activeRenderOnce, 'old');
-    expect(pendingPodcasts.map(({ query }) => query)).toEqual(['old']);
-    await refocusAndReplace(store, mockInput, activeRenderOnce, 'old', 'new');
+    await typeAndSubmit(mockInput, renderOnce, 'old');
+    expect(requests.map(({ url }) => url)).toHaveLength(1);
+    await refocusAndReplace(store, mockInput, renderOnce, 'old', 'new');
     await submit(mockInput);
-
-    expect(pendingPodcasts.map(({ query }) => query)).toEqual(['old', 'new']);
-    const oldSearch = pendingPodcasts[0];
-    const newSearch = pendingPodcasts[1];
-    if (!oldSearch || !newSearch) throw new Error('Expected both podcast searches');
+    expect(requests).toHaveLength(2);
 
     await act(async () => {
-      oldSearch.resolve([oldPodcast]);
+      requests[0]?.respond(itunesSearchBody([oldPodcast]));
       await Bun.sleep(0);
-      await activeRenderOnce();
+      await renderOnce();
     });
     expect(store.get(podcastSearchResultsAtom)).toEqual([]);
     expect(store.get(podcastSearchLoadingAtom)).toBe(true);
 
     await act(async () => {
-      newSearch.resolve([newPodcast]);
+      requests[1]?.respond(itunesSearchBody([newPodcast]));
       await Bun.sleep(0);
-      await activeRenderOnce();
+      await renderOnce();
     });
     expect(store.get(podcastSearchResultsAtom)).toEqual([newPodcast]);
     expect(store.get(podcastSearchLoadingAtom)).toBe(false);
   } finally {
     try {
       await act(async () => {
-        for (const { resolve } of pendingPodcasts) resolve([]);
+        for (const request of requests) request.respond(itunesSearchBody([]));
         await Bun.sleep(0);
-        if (renderOnce) await renderOnce();
+        await renderOnce();
       });
     } finally {
-      try {
-        podcastProvider.searchPodcasts = originalSearchPodcasts;
-      } finally {
-        if (cleanup) await cleanup();
-      }
+      await cleanup();
     }
   }
 });
 
 test('ignores a stale continuation while a fresh music search remains pending', async () => {
-  const continuation = {};
+  const continuation: SearchContinuation = { next: async () => ({ tracks: [], hasMore: false }) };
   const baseResult: SearchResult = {
     tracks: [baseTrack],
     hasMore: true,
@@ -309,7 +231,7 @@ test('ignores a stale continuation while a fresh music search remains pending', 
   pendingSearches.length = 0;
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
-  const { mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { mockInput, renderOnce, cleanup } = await renderTestApp({ store, music: provider });
 
   try {
     await typeAndSubmit(mockInput, renderOnce, 'base');
@@ -325,7 +247,8 @@ test('ignores a stale continuation while a fresh music search remains pending', 
     expect(pendingSearches.map(({ query }) => query)).toEqual(['base', '']);
     const pageSearch = pendingSearches[1];
     if (!pageSearch) throw new Error('Expected continuation search');
-    expect(pageSearch.options).toEqual({ continuation });
+    expect(pageSearch.options?.continuation).toBe(continuation);
+    expect(pageSearch.options?.signal).toBeInstanceOf(AbortSignal);
 
     await refocusAndReplace(store, mockInput, renderOnce, 'base', 'fresh');
     await submit(mockInput);
@@ -346,7 +269,7 @@ test('ignores a stale continuation while a fresh music search remains pending', 
 });
 
 test('starts only one continuation for rapid Shift+L presses', async () => {
-  const continuation = {};
+  const continuation: SearchContinuation = { next: async () => ({ tracks: [], hasMore: false }) };
   const baseResult: SearchResult = {
     tracks: [baseTrack],
     hasMore: true,
@@ -355,7 +278,7 @@ test('starts only one continuation for rapid Shift+L presses', async () => {
   pendingSearches.length = 0;
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
-  const { mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { mockInput, renderOnce, cleanup } = await renderTestApp({ store, music: provider });
 
   try {
     await typeAndSubmit(mockInput, renderOnce, 'base');
@@ -376,7 +299,7 @@ test('starts only one continuation for rapid Shift+L presses', async () => {
 });
 
 test('does not load a continuation while a fresh search is pending', async () => {
-  const continuation = {};
+  const continuation: SearchContinuation = { next: async () => ({ tracks: [], hasMore: false }) };
   const baseResult: SearchResult = {
     tracks: [baseTrack],
     hasMore: true,
@@ -385,7 +308,7 @@ test('does not load a continuation while a fresh search is pending', async () =>
   pendingSearches.length = 0;
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
-  const { mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { mockInput, renderOnce, cleanup } = await renderTestApp({ store, music: provider });
 
   try {
     await typeAndSubmit(mockInput, renderOnce, 'base');
@@ -409,8 +332,12 @@ test('does not load a continuation while a fresh search is pending', async () =>
 });
 
 test('keeps fresh continuation ownership when an older page is pending', async () => {
-  const oldContinuation = {};
-  const freshContinuation = {};
+  const oldContinuation: SearchContinuation = {
+    next: async () => ({ tracks: [], hasMore: false }),
+  };
+  const freshContinuation: SearchContinuation = {
+    next: async () => ({ tracks: [], hasMore: false }),
+  };
   const baseResult: SearchResult = {
     tracks: [baseTrack],
     hasMore: true,
@@ -424,6 +351,7 @@ test('keeps fresh continuation ownership when an older page is pending', async (
   const freshPageTrack: Track = {
     id: 'fresh-page',
     provider: 'app-search-test',
+    source: { kind: 'youtube', videoId: 'fresh-page' },
     title: 'Fresh page result',
     artist: 'Test artist',
     duration: 0,
@@ -432,7 +360,7 @@ test('keeps fresh continuation ownership when an older page is pending', async (
   pendingSearches.length = 0;
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
-  const { mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { mockInput, renderOnce, cleanup } = await renderTestApp({ store, music: provider });
 
   try {
     await typeAndSubmit(mockInput, renderOnce, 'base');
@@ -478,7 +406,7 @@ test('keeps fresh continuation ownership when an older page is pending', async (
 });
 
 test('keeps retained music results pageable after a fresh search rejects', async () => {
-  const continuation = {};
+  const continuation: SearchContinuation = { next: async () => ({ tracks: [], hasMore: false }) };
   const baseResult: SearchResult = {
     tracks: [baseTrack],
     hasMore: true,
@@ -487,7 +415,10 @@ test('keeps retained music results pageable after a fresh search rejects', async
   pendingSearches.length = 0;
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
-  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp({
+    store,
+    music: provider,
+  });
 
   try {
     await typeAndSubmit(mockInput, renderOnce, 'base');
@@ -526,13 +457,19 @@ test('keeps retained music results pageable after a fresh search rejects', async
 test('does not invoke mute while typing in focused search input', async () => {
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
+  const base = createTestPlayer(store);
   let toggleMuteCalls = 0;
-  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store, {
-    onTrackEnd: () => {},
+  const player: PlayerPort = {
+    ...base.player,
     toggleMute: async () => {
       toggleMuteCalls++;
     },
-  } as unknown as PlayerController);
+  };
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp({
+    store,
+    player,
+    music: provider,
+  });
 
   try {
     await act(async () => {
@@ -550,14 +487,18 @@ test('does not invoke mute while typing in focused search input', async () => {
 test('palette transcript search reopens lyrics closed after callback creation', async () => {
   const store = createStore();
   store.set(sectionAtom, 'podcast');
-  store.set(playerTrackAtom, newTrack);
-  store.set(lyricsDataAtom, {
-    lines: [{ time: 0, text: 'Needle lyric' }],
-    synced: false,
-    source: 'test',
+  store.set(lyricsDocumentAtom, {
+    mediaKey: JSON.stringify(['app-search-test', 'new']),
+    sourceKey: 'test',
+    contentHash: 'test-hash',
+    original: {
+      lines: [{ time: 0, text: 'Needle lyric' }],
+      synced: false,
+      source: 'test',
+    },
   });
   store.set(lyricsVisibleAtom, true);
-  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp({ store });
 
   try {
     await act(async () => {
@@ -598,7 +539,7 @@ test('renders two spaces between NowPlaying speed and time', async () => {
   store.set(playerSpeedAtom, 1.5);
   store.set(playerPositionAtom, 65);
   store.set(playerDurationAtom, 130);
-  const { captureCharFrame, renderOnce, cleanup } = await renderTestApp(store);
+  const { captureCharFrame, renderOnce, cleanup } = await renderTestApp({ store });
 
   try {
     await renderOnce();
@@ -610,7 +551,7 @@ test('renders two spaces between NowPlaying speed and time', async () => {
 
 test('renders two spaces between transcript URL actions', async () => {
   const store = createStore();
-  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp(store);
+  const { captureCharFrame, mockInput, renderOnce, cleanup } = await renderTestApp({ store });
 
   try {
     await act(async () => {

@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { parseFeed } from '../../src/providers/rss';
-
-mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
 
 const wrap = (items: string) => `<?xml version="1.0"?><rss><channel>${items}</channel></rss>`;
 
@@ -204,5 +199,78 @@ describe('parseFeed', () => {
       expect(ep.podcastId).toBe('pod-99');
       expect(ep.podcastTitle).toBe('Great Show');
     }
+  });
+  test('decodes XML entities in enclosure url', () => {
+    const xml = wrap(
+      item(
+        '<title>Ep</title><enclosure url="https://e.example/media.mp3?a=1&amp;b=2" type="audio/mpeg"/><guid>g-q</guid>',
+      ),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].audioUrl).toBe('https://e.example/media.mp3?a=1&b=2');
+  });
+
+  test('decodes XML entities in transcript url', () => {
+    const xml = wrap(
+      item(
+        '<title>Ep</title>' +
+          enclosure() +
+          '<guid>g-tq</guid><podcast:transcript url="https://t.example/t.vtt?lang&#x3D;en&amp;fmt=vtt" type="text/vtt"/>',
+      ),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].transcriptUrl).toBe('https://t.example/t.vtt?lang=en&fmt=vtt');
+  });
+
+  test('decodes double-escaped entities exactly once', () => {
+    const xml = wrap(
+      item('<title>&amp;lt;tag&amp;gt;</title>' + enclosure() + '<guid>g-once</guid>'),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].title).toBe('&lt;tag&gt;');
+  });
+
+  test('decodes decimal, hex, and astral numeric entities', () => {
+    const xml = wrap(
+      item('<title>A&#8211;B&#x2603;C&#x1F600;D</title>' + enclosure() + '<guid>g-num</guid>'),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].title).toBe('A–B☃C😀D');
+  });
+
+  test('preserves unknown entities literally', () => {
+    const xml = wrap(
+      item('<title>&foobar; &lt;ok&gt;</title>' + enclosure() + '<guid>g-unk</guid>'),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].title).toBe('&foobar; <ok>');
+  });
+
+  test('does not match tag names embedded in other tags', () => {
+    const xml = wrap(
+      item(
+        '<itunes:title>Alt</itunes:title><title>Main</title>' +
+          enclosure() +
+          '<guid>g-bound</guid>',
+      ),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].title).toBe('Main');
+  });
+
+  test('does not match attribute names embedded in other attribute names', () => {
+    const xml = wrap(
+      item(
+        '<title>Ep</title><enclosure ourl="https://wrong.example/x.mp3" url="https://right.example/y.mp3" type="audio/mpeg"/><guid>g-attr</guid>',
+      ),
+    );
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].audioUrl).toBe('https://right.example/y.mp3');
+  });
+
+  test('does not treat guid-prefixed tags as guid', () => {
+    const xml = wrap(item('<title>Ep</title>' + enclosure() + '<guidance>nope</guidance>'));
+    const eps = parseFeed(xml, 'pod-1', 'P');
+    expect(eps[0].id).not.toBe('nope');
   });
 });

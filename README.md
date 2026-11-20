@@ -55,21 +55,25 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 - Synced lyrics from [LRCLIB](https://lrclib.net/) with per-line highlighting
 - Lyrics translation via Lingva, DeepL, or MyMemory — cached locally per track + language
 - Queue management, favorites, play history (SQLite)
+- Contextual artist/release browsing with paged albums, singles/EPs and top songs; append or play complete albums
 - Shuffle, repeat (off/track/all), playback speed (0.5x-2x)
 
 **Podcasts**
 - Podcast discovery via iTunes Search API
 - RSS feed parsing with subscription management
 - YouTube-backed playback for perfectly synced transcripts
+- Remember an episode's Auto, RSS, matched YouTube, or custom YouTube source independently of transcript overrides
 - Flowing transcript display with inline phrase highlighting
 - Smart paragraph splitting using sentence-ending punctuation
 
 **Interface**
-- 6 layout presets: Default, Compact, Minimal, Split, Wide, Focus
+- 7 layout presets: Default, Compact, Minimal, Split, Wide, Focus, Vertical
 - 8 color themes: Tokyo Night, Catppuccin, Dracula, Nord, Gruvbox, Solarized, Rose Pine, Kanagawa
 - Command palette (Ctrl+P) with fuzzy-searchable commands
 - Full Unicode support (CJK, Vietnamese, emoji)
 - Vim-style navigation (j/k/g/G)
+- Independent ASCII-chrome and reduced-motion settings; Unicode media text is preserved
+- Opt-in process-only audio spectrum, never a decorative equalizer or whole-system recording
 
 ## Getting Started
 
@@ -77,7 +81,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 
 | Dependency | Version | Install |
 |---|---|---|
-| [Bun](https://bun.sh/) | >= 1.2 | `curl -fsSL https://bun.sh/install \| bash` |
+| [Bun](https://bun.sh/) | >= 1.3.14 (pinned: 1.3.14) | `curl -fsSL https://bun.sh/install \| bash` |
 | [mpv](https://mpv.io/) | >= 0.35 | See below |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest | See below |
 
@@ -126,7 +130,7 @@ tui-tunes
 ```bash
 git clone https://github.com/5c0r/TuiTunes.git
 cd TuiTunes
-bun install
+bun install --frozen-lockfile
 bun run start
 ```
 
@@ -198,13 +202,15 @@ TuiTunes has two independent sections, each with its own sidebar and search rout
 - **Favorites** - Saved tracks (f to toggle, persisted in SQLite)
 - **History** - Recently played tracks
 
+Use **Open Primary Artist** or **Open Album** in the command palette on a focused music row with provider browse metadata. Artist tabs use Left/Right; Escape goes back and restores the previous selection. **Add Album to Queue** collects all available pages before one atomic append. **Play Album** appends without clearing the existing queue, then starts the first new entry. Unsupported or incomplete collections are reported rather than silently treated as complete.
+
 ### Podcast (Ctrl+2)
 
 - **Search** - iTunes podcast discovery
 - **My Feeds** - Subscribed podcasts (subscribe via command palette)
 - **Episodes** - Browse and play episodes from a feed
 
-Podcast episodes prefer YouTube-backed playback when available, giving perfectly synced auto-generated transcripts. Falls back to RSS audio when no YouTube match exists.
+Podcast **Auto** prefers a matched YouTube video and falls back to RSS. **Source for Selected Episode** saves a future-play preference; **Source for Playing Episode** can switch the active episode. RSS and matched YouTube are strict choices; a missing match does not silently become RSS. Custom YouTube accepts a video ID or supported YouTube URL. A genuine switch restarts at zero while retaining queue origin, pause, volume, mute and speed; its preference is committed only after the replacement loads. Transcript source overrides remain separate.
 
 ## Themes
 
@@ -231,6 +237,7 @@ Cycle with `Ctrl+L` or via command palette:
 | **Split** | Queue on left, results on right |
 | **Wide** | Extended now-playing with queue preview |
 | **Focus** | Distraction-free, now-playing only |
+| **Vertical** | Full-width stacked content for narrower terminals |
 
 ## Configuration
 
@@ -238,14 +245,20 @@ Config file: `~/.config/tuimusic/config.json`
 
 ```json
 {
-  "defaultProvider": "youtube",
   "volume": 80,
-  "localMusicDirs": ["~/Music"],
-  "theme": "dark",
-  "poToken": null,
-  "visitorData": null
+  "translationLanguage": null,
+  "translationProvider": "lingva",
+  "deeplApiKey": null,
+  "lingvaInstance": null,
+  "ascii": false,
+  "reducedMotion": false,
+  "spectrumEnabled": false
 }
 ```
+
+mpv and yt-dlp are mandatory at startup. Legacy podcast library rows remain visible but cannot play until an episode with complete source metadata is saved again. Removing the current queue entry immediately advances in play order; only repeat-all wraps after the last entry.
+
+Use **Toggle ASCII Mode**, **Toggle Reduced Motion**, and **Toggle Audio Spectrum** in the palette. Their live state also appears in Help. ASCII affects application chrome only, not titles, lyrics, transcripts or input. Reduced motion suppresses decorative animation and spectrum capture/FFT without changing the saved spectrum preference. Spectrum defaults off, analyzes only this application's mpv audio, and fails closed when process isolation cannot be established. See [platform requirements and native validation](PLATFORM.md#process-only-audio-spectrum) before enabling it.
 
 Data stored in:
 - `~/.config/tuimusic/tuimusic.db` - Favorites, history, podcast subscriptions (SQLite)
@@ -258,9 +271,15 @@ Data stored in:
 ```bash
 bun run start     # Launch
 bun run dev       # Watch mode (auto-restart on changes)
-bun test          # Run 196 tests
-bunx tsc --noEmit # Type check
+bun run typecheck       # Strict source and test types
+bun run test:coverage   # Isolated suite; weighted line/function coverage >= 60%
+bun run test:mpv        # Real mpv, local WAV, no audio/network
+bun run build
+bun run smoke:compiled # Compiled TUI under a PTY (requires util-linux script)
+bun run test:spectrum:native # Native helper protocol/buffer checks; not an audio-permission proof
 ```
+
+The coverage gate measures weighted source line/function totals and rejects missing runtime modules. Type-only modules are exempt; bootstrap is verified through the compiled TUI smoke test. Tests preload isolated HOME/XDG directories and use offline fixtures; real-mpv integration runs separately.
 
 ### Compiled Binary
 
@@ -271,20 +290,24 @@ bun build --compile --minify src/index.tsx --outfile dist/tuimusic
 
 Produces a standalone ~105MB binary (includes Bun runtime). Still requires system mpv and yt-dlp.
 
+On macOS, spectrum additionally needs the bundled `TuiTunesSpectrum.app` helper (macOS 14.2+). Build it with `bun run build:spectrum-helper` on macOS; distributable macOS archives place the app beside `tuimusic`. Native macOS/WSLg audio acceptance and maintainer approval remain release gates; a helper compile or protocol test is not evidence of successful process-only capture.
+
 ## Architecture
 
 ```
 src/
   index.tsx          Entry point: bootstrap + cleanup
   app.tsx            Root component: keyboard handler + layout rendering
-  commands.ts        35 commands for the command palette
+  commands.ts        Typed command registry
 
+  application/       Playback, lyrics, search, catalog and spectrum owners; keyboard dispatch
   player/            mpv JSON IPC over Unix socket
   providers/         YouTube, podcast, lyrics, transcripts
-  store/             Jotai atoms (player, queue, UI, library, podcast)
-  ui/                OpenTUI React components (12 components)
+  store/             Jotai atoms (player, queue, UI, library, podcast, catalog, spectrum)
+  ui/                OpenTUI React components and presentation profiles
   db/                SQLite persistence (bun:sqlite)
   utils/             Config, logging, formatting
+  spectrum/          Process-only capture backends and shared PCM/FFT analysis
 ```
 
 See [AGENTS.md](AGENTS.md) for the full development guide, and [PLATFORM.md](PLATFORM.md) for cross-platform details.

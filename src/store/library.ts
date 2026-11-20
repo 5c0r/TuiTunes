@@ -2,7 +2,7 @@ import { atom } from 'jotai';
 import type { Track } from '../providers/types';
 
 /**
- * Set of favorite track keys ('provider:id') for O(1) lookup.
+ * Set of mediaKey values for O(1) lookup, including feed-scoped episodes.
  * Loaded from SQLite on startup, updated on toggle.
  */
 export const favoritesSetAtom = atom<Set<string>>(new Set<string>());

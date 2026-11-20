@@ -1,4 +1,5 @@
 import { TextAttributes } from '@opentui/core';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 export interface QuitConfirmProps {
@@ -7,6 +8,7 @@ export interface QuitConfirmProps {
 
 export function QuitConfirm({ visible }: QuitConfirmProps) {
   const t = useTheme();
+  const p = usePresentation();
 
   if (!visible) return null;
 
@@ -25,6 +27,7 @@ export function QuitConfirm({ visible }: QuitConfirmProps) {
         height={7}
         border
         borderStyle="double"
+        {...p.borderProps}
         borderColor={t.red}
         backgroundColor={t.bg}
         title="Quit TuiTunes?"

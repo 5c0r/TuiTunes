@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import {
   isMpvEvent,
   isMpvResponse,
+  normalizeAudioBackend,
   type MpvMessage,
   OBSERVED_PROPERTIES,
+  parsePlaylistEntryId,
 } from '../../src/player/types';
 
 describe('isMpvEvent', () => {
@@ -63,15 +65,62 @@ describe('isMpvResponse', () => {
 });
 
 describe('OBSERVED_PROPERTIES', () => {
-  test('has 13 entries', () => {
-    expect(OBSERVED_PROPERTIES).toHaveLength(13);
+  test('has 14 entries', () => {
+    expect(OBSERVED_PROPERTIES).toHaveLength(14);
   });
 
-  test('ids are unique integers 1..13', () => {
+  test('ids are unique integers 1..14', () => {
     const ids = OBSERVED_PROPERTIES.map((p) => p.id);
-    expect(new Set(ids).size).toBe(13);
-    for (let i = 1; i <= 13; i++) {
+    expect(new Set(ids).size).toBe(14);
+    for (let i = 1; i <= 14; i++) {
       expect(ids).toContain(i);
     }
+  });
+
+  test('observer 14 is current-ao', () => {
+    expect(OBSERVED_PROPERTIES[13]).toEqual({ id: 14, name: 'current-ao' });
+  });
+});
+
+describe('parsePlaylistEntryId', () => {
+  test('accepts nonnegative safe integers', () => {
+    expect(parsePlaylistEntryId(0)).toBe(0);
+    expect(parsePlaylistEntryId(1)).toBe(1);
+    expect(parsePlaylistEntryId(9007199254740991)).toBe(9007199254740991);
+  });
+
+  test('rejects malformed identities', () => {
+    for (const bad of [
+      -1,
+      1.5,
+      '3',
+      null,
+      undefined,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      2 ** 53,
+      true,
+    ]) {
+      expect(parsePlaylistEntryId(bad)).toBeNull();
+    }
+  });
+});
+
+describe('normalizeAudioBackend', () => {
+  test('maps capture-capable backends', () => {
+    expect(normalizeAudioBackend('pipewire')).toBe('pipewire');
+    expect(normalizeAudioBackend('pulse')).toBe('pulse');
+    expect(normalizeAudioBackend('pulseaudio')).toBe('pulse');
+    expect(normalizeAudioBackend('coreaudio')).toBe('coreaudio');
+  });
+
+  test('any other named output is unsupported; absent reports are null', () => {
+    expect(normalizeAudioBackend('alsa')).toBe('unsupported');
+    expect(normalizeAudioBackend('null')).toBe('unsupported');
+    expect(normalizeAudioBackend('jack')).toBe('unsupported');
+    expect(normalizeAudioBackend('')).toBeNull();
+    expect(normalizeAudioBackend('   ')).toBeNull();
+    expect(normalizeAudioBackend(undefined)).toBeNull();
+    expect(normalizeAudioBackend(42)).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import type { Socket } from 'bun';
 import { Logger } from '../utils/logger';
 import {
   isMpvEvent,
+  parsePlaylistEntryId,
   type MpvEvent,
   type MpvMessage,
   type MpvPropertyMap,
@@ -157,10 +158,29 @@ export class MpvIPC {
     Logger.info(`observing ${OBSERVED_PROPERTIES.length} mpv properties`);
   }
 
-  // Convenience commands
-
-  async loadfile(url: string, mode: 'replace' | 'append-play' = 'replace'): Promise<void> {
-    await this.command('loadfile', url, mode);
+  /**
+   * loadfile a URL and resolve with the native playlist entry identity the
+   * ACK reports. A success ACK without a valid playlist_entry_id is a
+   * protocol failure, never evidence of a loaded source.
+   */
+  async loadfile(
+    url: string,
+    mode: 'replace' | 'append-play' = 'replace',
+  ): Promise<{
+    playlistEntryId: number;
+  }> {
+    const data = await this.command('loadfile', url, mode);
+    const raw =
+      data !== null && typeof data === 'object' && 'playlist_entry_id' in data
+        ? data.playlist_entry_id
+        : undefined;
+    const playlistEntryId = parsePlaylistEntryId(raw);
+    if (playlistEntryId === null) {
+      throw new Error(
+        `mpv loadfile ACK missing valid playlist_entry_id (command: loadfile ${url})`,
+      );
+    }
+    return { playlistEntryId };
   }
 
   async setPause(paused: boolean): Promise<void> {

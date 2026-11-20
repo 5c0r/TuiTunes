@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { createStore } from 'jotai';
+import type { Store } from 'jotai/vanilla/store';
+import type { Track } from '../../src/providers/types';
 import {
   playerDurationAtom,
+  playerErrorAtom,
   playerMuteAtom,
+  playerPlaybackAtom,
   playerPositionAtom,
   playerProgressAtom,
   playerStateAtom,
@@ -10,8 +14,19 @@ import {
   playerVolumeAtom,
 } from '../../src/store/player';
 
+function makeTrack(id: string): Track {
+  return {
+    id,
+    provider: 'youtube',
+    source: { kind: 'youtube', videoId: id },
+    title: `Track ${id}`,
+    artist: 'Artist',
+    duration: 100,
+  };
+}
+
 describe('player store', () => {
-  let store: ReturnType<typeof createStore>;
+  let store: Store;
 
   beforeEach(() => {
     store = createStore();
@@ -38,8 +53,57 @@ describe('player store', () => {
       expect(store.get(playerStateAtom)).toBe('stopped');
     });
 
+    test('playback target is null', () => {
+      expect(store.get(playerPlaybackAtom)).toBeNull();
+    });
+
     test('track is null', () => {
       expect(store.get(playerTrackAtom)).toBeNull();
+    });
+
+    test('error is null', () => {
+      expect(store.get(playerErrorAtom)).toBeNull();
+    });
+  });
+
+  describe('playerTrackAtom derives from playerPlaybackAtom', () => {
+    test('setting a playback target publishes its track', () => {
+      const track = makeTrack('abc');
+      store.set(playerPlaybackAtom, {
+        track,
+        source: {
+          kind: 'youtube',
+          url: 'https://example.com/stream',
+          videoId: 'abc',
+          selection: 'auto',
+        },
+        requestId: 1,
+        origin: { kind: 'direct' },
+      });
+      expect(store.get(playerTrackAtom)).toBe(track);
+    });
+
+    test('clearing the playback target clears the track', () => {
+      store.set(playerPlaybackAtom, {
+        track: makeTrack('abc'),
+        source: {
+          kind: 'youtube',
+          url: 'https://example.com/stream',
+          videoId: 'abc',
+          selection: 'auto',
+        },
+        requestId: 1,
+        origin: { kind: 'direct' },
+      });
+      store.set(playerPlaybackAtom, null);
+      expect(store.get(playerTrackAtom)).toBeNull();
+    });
+
+    test('playerTrackAtom is read-only', () => {
+      expect(() => {
+        // @ts-expect-error — derived atom is read-only
+        store.set(playerTrackAtom, makeTrack('abc'));
+      }).toThrow();
     });
   });
 

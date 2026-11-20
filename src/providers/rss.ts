@@ -1,26 +1,80 @@
 import type { Episode } from './podcast-types';
 
-/**
- * Extract text content from an XML tag, handling CDATA sections.
- * Returns empty string if the tag is not found.
- */
-function extractTag(xml: string, tag: string): string {
-  const re = new RegExp(
-    `<${tag}[^>]*>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))\\s*</${tag}>`,
-    'i',
-  );
-  const match = xml.match(re);
-  if (!match) return '';
-  return (match[1] ?? match[2] ?? '').trim();
+const NAMED_XML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+// Longest supported entity body is "#x10FFFF" (8 chars); anything past this
+// window is literal text, not an entity reference.
+const MAX_ENTITY_LENGTH = 12;
+
+function decodeEntityBody(body: string): string | undefined {
+  const named = NAMED_XML_ENTITIES[body];
+  if (named !== undefined) return named;
+  if (!body.startsWith('#')) return undefined;
+  const digits = body.slice(1);
+  const hex = digits.startsWith('x') || digits.startsWith('X');
+  const numerals = hex ? digits.slice(1) : digits;
+  if (numerals.length === 0) return undefined;
+  const validNumerals = hex ? /^[0-9a-fA-F]+$/ : /^[0-9]+$/;
+  if (!validNumerals.test(numerals)) return undefined;
+  const codePoint = Number.parseInt(numerals, hex ? 16 : 10);
+  if (!Number.isSafeInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return undefined;
+  return String.fromCodePoint(codePoint);
 }
 
 /**
- * Extract an attribute value from a self-closing or open tag.
+ * Single-pass XML entity decoder. Named entities plus decimal/hex numeric
+ * character references are decoded once; unknown or malformed references are
+ * preserved literally. `&amp;lt;` therefore decodes to `&lt;`, not `<`.
+ */
+function decodeEntities(text: string): string {
+  if (!text.includes('&')) return text;
+  let result = '';
+  let cursor = 0;
+  for (;;) {
+    const ampersand = text.indexOf('&', cursor);
+    if (ampersand === -1) {
+      return result + text.slice(cursor);
+    }
+    result += text.slice(cursor, ampersand);
+    const semicolon = text.indexOf(';', ampersand + 1);
+    if (semicolon === -1 || semicolon - ampersand > MAX_ENTITY_LENGTH) {
+      result += '&';
+      cursor = ampersand + 1;
+      continue;
+    }
+    const decoded = decodeEntityBody(text.slice(ampersand + 1, semicolon));
+    result += decoded ?? text.slice(ampersand, semicolon + 1);
+    cursor = semicolon + 1;
+  }
+}
+
+/**
+ * Extract text content from the first matching XML tag, handling CDATA
+ * sections. The tag name must match on token boundaries. Returns '' if absent.
+ */
+function extractTag(xml: string, tag: string): string {
+  const match = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}\\s*>`, 'i').exec(xml);
+  if (!match) return '';
+  const content = match[1]!;
+  const cdata = /<!\[CDATA\[([\s\S]*?)\]\]>/.exec(content);
+  return (cdata?.[1] ?? content).trim();
+}
+
+/**
+ * Extract an attribute value from the first matching tag. Tag and attribute
+ * names must match on token boundaries; the value is returned still encoded.
  */
 function extractAttr(xml: string, tag: string, attr: string): string {
-  const re = new RegExp(`<${tag}[^>]*?${attr}\\s*=\\s*["']([^"']*)["']`, 'i');
-  const match = xml.match(re);
-  return match?.[1] ?? '';
+  const match = new RegExp(`<${tag}\\b[^>]*?\\s${attr}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, 'i').exec(
+    xml,
+  );
+  return match?.[2] ?? '';
 }
 
 /**
@@ -30,28 +84,15 @@ function extractAttr(xml: string, tag: string, attr: string): string {
 function parseDuration(raw: string): number {
   const trimmed = raw.trim();
   if (!trimmed) return 0;
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
   const parts = trimmed.split(':').map(Number);
   if (parts.some(Number.isNaN)) return 0;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  if (parts.length === 2) return parts[0]! * 60 + parts[1]!;
   return 0;
 }
 
-/** Decode common HTML entities. */
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&#8211;/g, '\u2013')
-    .replace(/&#038;/g, '&')
-    .replace(/&#\d+;/g, (m) => String.fromCharCode(parseInt(m.slice(2, -1), 10)));
-}
-
-/** Strip HTML tags and collapse whitespace. */
+/** Strip HTML tags, decode entities once, and collapse whitespace. */
 function stripHtml(html: string): string {
   return decodeEntities(html.replace(/<[^>]*>/g, ''))
     .replace(/\s+/g, ' ')
@@ -73,23 +114,22 @@ function simpleHash(input: string): string {
  */
 export function parseFeed(xml: string, podcastId: string, podcastTitle: string): Episode[] {
   const episodes: Episode[] = [];
-  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
+  const itemRegex = /<item(?:\s[^>]*)?>([\s\S]*?)<\/item\s*>/gi;
 
   for (;;) {
     const itemMatch = itemRegex.exec(xml);
     if (!itemMatch) break;
-    const itemXml = itemMatch[1];
+    const itemXml = itemMatch[1]!;
 
     // Audio URL from enclosure is required — skip episodes without one
-    const audioUrl = extractAttr(itemXml, 'enclosure', 'url');
+    const audioUrl = decodeEntities(extractAttr(itemXml, 'enclosure', 'url'));
     if (!audioUrl) continue;
 
     const title = decodeEntities(extractTag(itemXml, 'title'));
     const guid = extractTag(itemXml, 'guid');
     const id = guid || simpleHash(title + audioUrl);
 
-    const rawDuration = extractTag(itemXml, 'itunes:duration');
-    const duration = parseDuration(rawDuration);
+    const duration = parseDuration(extractTag(itemXml, 'itunes:duration'));
 
     const pubDate = extractTag(itemXml, 'pubDate');
     let publishDate = '';
@@ -98,10 +138,9 @@ export function parseFeed(xml: string, podcastId: string, podcastTitle: string):
       publishDate = Number.isNaN(parsed.getTime()) ? pubDate : parsed.toISOString();
     }
 
-    const rawDesc = extractTag(itemXml, 'description');
-    const description = stripHtml(rawDesc).slice(0, 200) || undefined;
+    const description = stripHtml(extractTag(itemXml, 'description')).slice(0, 200) || undefined;
 
-    const transcriptUrl = extractAttr(itemXml, 'podcast:transcript', 'url') || undefined;
+    const transcriptUrl = decodeEntities(extractAttr(itemXml, 'podcast:transcript', 'url'));
 
     episodes.push({
       id,
@@ -112,7 +151,7 @@ export function parseFeed(xml: string, podcastId: string, podcastTitle: string):
       duration,
       publishDate,
       description,
-      transcriptUrl,
+      transcriptUrl: transcriptUrl || undefined,
     });
   }
 

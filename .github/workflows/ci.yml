@@ -11,26 +11,253 @@ permissions:
 
 jobs:
   lint-and-test:
-    name: Lint & Test
+    name: Lint & Verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Type check
-        run: bunx tsc --noEmit
+      - name: Type check (source and tests)
+        run: bun run typecheck
 
       - name: Lint (Biome)
         run: bunx biome lint src/ test/
 
-      - name: Test
-        run: bun test
+      - name: Test with coverage gate
+        run: bun run test:coverage
+
+      - name: Collect LCOV artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: warn
+
+      - name: Install player prerequisites (mpv, yt-dlp, util-linux script)
+        run: sudo apt-get update && sudo apt-get install -y mpv yt-dlp util-linux
+
+      - name: Build production binary
+        run: bun run build
+
+      - name: Real-mpv integration test
+        run: bun run test:mpv
+
+      - name: Compiled binary smoke test
+        run: bun run smoke:compiled
+
+  # Real capture against disposable private audio servers on this runner.
+  # The spectrum integration gate is env-gated by `bun run test:spectrum`
+  # (TUITUNES_SPECTRUM_INTEGRATION=1); missing server prerequisites are a
+  # failure there, not a skip. These jobs never touch a user audio route.
+  # macOS and WSLg acceptance remain attended human records — not covered here.
+  spectrum-pipewire:
+    name: Spectrum — PipeWire (private server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install PipeWire tools and mpv
+        run: sudo apt-get update && sudo apt-get install -y mpv pipewire-bin libspa-0.2-modules
+
+      - name: Real spectrum integration test (pw-dump graph, passive pw-link capture)
+        run: TUITUNES_SPECTRUM_TEST_BACKEND=pipewire bun run test:spectrum
+
+  spectrum-pulse:
+    name: Spectrum — native PulseAudio (private server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install PulseAudio tools and mpv
+        run: sudo apt-get update && sudo apt-get install -y mpv pulseaudio pulseaudio-utils
+
+      - name: Real spectrum integration test (single-input monitor capture)
+        run: TUITUNES_SPECTRUM_TEST_BACKEND=pulse bun run test:spectrum
+
+  # The universal helper is built exactly once per candidate; every consumer
+  # (both darwin archives and the npm package) receives the identical bytes via
+  # a tar artifact that preserves executable modes and the ad-hoc signature.
+  # The --version protocol check and the sanitizer/codesign checks below are
+  # build proofs only — they are NOT audio or consent proof.
+  macos-spectrum-helper:
+    name: macOS Spectrum Helper (universal)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build universal spectrum helper (arm64 + x64 lipo)
+        run: bun run build:spectrum-helper
+
+      - name: Native compiler, sanitizer and codesign checks
+        run: bun run test:spectrum:native
+
+      - name: Helper protocol check (no audio, no consent)
+        run: |
+          set -euo pipefail
+          helper="native/bin/TuiTunesSpectrum.app/Contents/MacOS/tuitunes-spectrum-tap"
+          output="$("$helper" --version)"
+          if [ "$output" != "TUITUNES_SPECTRUM_HELPER 1" ]; then
+            echo "unexpected helper --version output: $output" >&2
+            exit 1
+          fi
+          echo "helper protocol check passed (build proof only, not audio/consent proof)"
+
+      - name: Stage helper artifact (modes/signature preserved by tar)
+        run: bun scripts/package-native.ts helper
+
+      - name: npm pack smoke (helper included through the native/bin files allowlist)
+        run: |
+          set -euo pipefail
+          npm pack --dry-run --json > "$RUNNER_TEMP/pack-report.json"
+          node -e '
+            const fs = require("fs");
+            const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/pack-report.json`, "utf8"));
+            const files = report.flatMap((entry) => entry.files ?? []);
+            const byPath = new Map(files.map((file) => [file.path, file]));
+            const executable = byPath.get("native/bin/TuiTunesSpectrum.app/Contents/MacOS/tuitunes-spectrum-tap");
+            const plist = byPath.get("native/bin/TuiTunesSpectrum.app/Contents/Info.plist");
+            if (!plist) { console.error("npm package is missing the helper Info.plist"); process.exit(1); }
+            if (!executable) { console.error("npm package is missing the helper executable"); process.exit(1); }
+            if (((executable.mode ?? 0) & 0o111) === 0) { console.error("helper executable lost its mode in the npm package"); process.exit(1); }
+            console.log(`npm pack smoke passed: helper bundle included (${files.length} files)`);
+          '
+
+      - name: Upload helper artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuitunes-spectrum-helper
+          path: |
+            artifacts/tuitunes-spectrum-helper.tar.gz
+            artifacts/tuitunes-spectrum-helper.tar.gz.sha256
+            artifacts/native-release-helper.json
+          if-no-files-found: error
+
+  # Each darwin architecture builds the Bun/OpenTUI standalone player natively
+  # on its own runner — native renderer bindings are never cross-compiled —
+  # then packages the CI-built universal helper beside the player binary.
+  macos-player-arm64:
+    name: macOS Player (arm64)
+    runs-on: macos-15
+    needs: [macos-spectrum-helper]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Restore universal helper artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tuitunes-spectrum-helper
+          path: helper-download
+
+      - name: Stage helper bundle from tar (preserves modes and signature)
+        run: tar -xzf helper-download/tuitunes-spectrum-helper.tar.gz -C .
+
+      - name: Build standalone player (native arm64)
+        run: bun run build
+
+      - name: Helper protocol check on this architecture (no audio, no consent)
+        run: |
+          set -euo pipefail
+          output="$(native/bin/TuiTunesSpectrum.app/Contents/MacOS/tuitunes-spectrum-tap --version)"
+          if [ "$output" != "TUITUNES_SPECTRUM_HELPER 1" ]; then
+            echo "unexpected helper --version output: $output" >&2
+            exit 1
+          fi
+
+      - name: Package darwin arm64 archive
+        run: bun scripts/package-native.ts archive --arch arm64
+
+      - name: Upload darwin arm64 archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-tunes-darwin-arm64
+          path: |
+            artifacts/tui-tunes-darwin-arm64.tar.gz
+            artifacts/tui-tunes-darwin-arm64.tar.gz.sha256
+            artifacts/native-release-arm64.json
+          if-no-files-found: error
+
+  macos-player-x64:
+    name: macOS Player (x64)
+    runs-on: macos-15-intel
+    needs: [macos-spectrum-helper]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Restore universal helper artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tuitunes-spectrum-helper
+          path: helper-download
+
+      - name: Stage helper bundle from tar (preserves modes and signature)
+        run: tar -xzf helper-download/tuitunes-spectrum-helper.tar.gz -C .
+
+      - name: Build standalone player (native x64)
+        run: bun run build
+
+      - name: Helper protocol check on this architecture (no audio, no consent)
+        run: |
+          set -euo pipefail
+          output="$(native/bin/TuiTunesSpectrum.app/Contents/MacOS/tuitunes-spectrum-tap --version)"
+          if [ "$output" != "TUITUNES_SPECTRUM_HELPER 1" ]; then
+            echo "unexpected helper --version output: $output" >&2
+            exit 1
+          fi
+
+      - name: Package darwin x64 archive
+        run: bun scripts/package-native.ts archive --arch x64
+
+      - name: Upload darwin x64 archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-tunes-darwin-x64
+          path: |
+            artifacts/tui-tunes-darwin-x64.tar.gz
+            artifacts/tui-tunes-darwin-x64.tar.gz.sha256
+            artifacts/native-release-x64.json
+          if-no-files-found: error
 
   commitlint:
     name: Commit Messages
@@ -43,7 +270,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

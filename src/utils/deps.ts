@@ -3,19 +3,29 @@ import { Logger } from './logger';
 
 const MIN_MPV_VERSION = [0, 35] as const;
 
-function printInstallInstructions(): void {
-  const platform = process.platform;
-  Logger.error('mpv is not installed.');
-
-  if (platform === 'linux') {
-    Logger.info('Install with: sudo pacman -S mpv  (Arch)');
-    Logger.info('         or: sudo apt install mpv  (Debian/Ubuntu)');
-  } else if (platform === 'darwin') {
-    Logger.info('Install with: brew install mpv');
-  } else {
-    Logger.info('Install mpv from https://mpv.io/installation/');
-  }
+export interface DependencyProbe {
+  which(name: 'mpv' | 'yt-dlp'): string | null;
+  version(absolutePath: string): Promise<string>;
 }
+const systemProbe: DependencyProbe = {
+  which: (name) => Bun.which(name),
+  async version(absolutePath) {
+    const child = Bun.spawn([absolutePath, '--version'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 5000,
+      killSignal: 'SIGKILL',
+    });
+    const [code, output, diagnostics] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    if (code !== 0)
+      throw new Error(`${absolutePath} --version failed: ${diagnostics.slice(0, 1024)}`);
+    return output;
+  },
+};
 
 function parseMpvVersion(output: string): [number, number] | null {
   // mpv --version outputs: "mpv v0.41.0 ..." or "mpv 0.38.0 ..."
@@ -24,27 +34,32 @@ function parseMpvVersion(output: string): [number, number] | null {
   return [Number(match[1]), Number(match[2])];
 }
 
-export function checkDependencies(): boolean {
-  const which = Bun.spawnSync(['which', 'mpv']);
-  if (which.exitCode !== 0) {
-    printInstallInstructions();
-    return false;
+export async function checkDependencies(probe: DependencyProbe = systemProbe): Promise<boolean> {
+  let mpvOutput = '';
+  for (const name of ['mpv', 'yt-dlp'] as const) {
+    const binary = probe.which(name);
+    if (!binary) {
+      const message = `${name} is required. Install mpv and yt-dlp with your system package manager.`;
+      Logger.error(message);
+      process.stderr.write(`${message}\n`);
+      return false;
+    }
+    try {
+      const output = await probe.version(binary);
+      if (name === 'mpv') mpvOutput = output;
+    } catch (error) {
+      Logger.error(`Cannot execute ${name}: ${error}`);
+      process.stderr.write(`Cannot execute ${name}: ${error}\n`);
+      return false;
+    }
   }
-
-  const versionResult = Bun.spawnSync(['mpv', '--version']);
-  const versionOutput = versionResult.stdout.toString();
-  const version = parseMpvVersion(versionOutput);
-
-  if (!version) {
-    Logger.error('Could not parse mpv version.');
-    return false;
-  }
-
-  const [major, minor] = version;
-  if (major < MIN_MPV_VERSION[0] || (major === MIN_MPV_VERSION[0] && minor < MIN_MPV_VERSION[1])) {
-    Logger.warn(
-      `mpv ${major}.${minor} is too old. TuiTunes requires mpv >= ${MIN_MPV_VERSION[0]}.${MIN_MPV_VERSION[1]}.`,
-    );
+  const version = parseMpvVersion(mpvOutput);
+  if (
+    !version ||
+    version[0] < MIN_MPV_VERSION[0] ||
+    (version[0] === 0 && version[1] < MIN_MPV_VERSION[1])
+  ) {
+    Logger.error('TuiTunes requires mpv >= 0.35 with a readable version.');
     return false;
   }
 

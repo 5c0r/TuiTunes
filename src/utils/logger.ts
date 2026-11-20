@@ -1,8 +1,8 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
-const LOG_DIR = path.join(os.homedir(), '.config', 'tuimusic');
+import { CONFIG_DIR as LOG_DIR } from './config';
+
 const LOG_PATH = path.join(LOG_DIR, 'debug.log');
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';

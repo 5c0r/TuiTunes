@@ -1,6 +1,7 @@
 import { TextAttributes } from '@opentui/core';
 import type React from 'react';
 import type { MusicView, PodcastView, Section } from '../store/ui';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 export type View = MusicView | PodcastView;
@@ -22,11 +23,11 @@ interface SidebarProps {
   focused: boolean;
   section: Section;
   activeView: View;
-  onViewChange: (view: View) => void;
 }
 
 export function Sidebar({ focused, section, activeView }: SidebarProps): React.ReactNode {
   const t = useTheme();
+  const p = usePresentation();
   const items = section === 'podcast' ? PODCAST_ITEMS : MUSIC_ITEMS;
 
   return (
@@ -35,12 +36,13 @@ export function Sidebar({ focused, section, activeView }: SidebarProps): React.R
       flexDirection="column"
       border
       borderStyle="rounded"
+      {...p.borderProps}
       borderColor={focused ? t.accent : t.border}
       backgroundColor={t.bg}
       paddingLeft={1}
     >
       <text attributes={TextAttributes.BOLD} fg={t.fg}>
-        {section === 'podcast' ? '🎙 Podcasts' : '♪ Music'}
+        {section === 'podcast' ? `${p.text('🎙')} Podcasts` : `${p.text('♪')} Music`}
       </text>
       {items.map((item) => {
         const active = item.view === activeView;
@@ -51,8 +53,8 @@ export function Sidebar({ focused, section, activeView }: SidebarProps): React.R
             bg={active ? t.selection : undefined}
             attributes={active ? TextAttributes.BOLD : 0}
           >
-            {active ? ' ▸ ' : '   '}
-            {item.icon} {item.label}
+            {active ? ` ${p.text('▸')} ` : '   '}
+            {p.text(item.icon)} {item.label}
           </text>
         );
       })}

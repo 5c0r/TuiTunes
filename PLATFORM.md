@@ -18,6 +18,39 @@
 | yt-dlp | `sudo pacman -S yt-dlp` / `pip install yt-dlp` | `brew install yt-dlp` | `winget install yt-dlp` |
 | PipeWire/PulseAudio | Pre-installed on most distros | CoreAudio (built-in) | WASAPI (built-in) |
 
+## Process-only Audio Spectrum
+
+Spectrum is opt-in (`spectrumEnabled: false` by default), uses the existing mpv process, and never opens a second media decoder, changes the output route, or falls back to a whole-system monitor. Reduced motion suspends capture and FFT while retaining the saved preference.
+
+| Backend | Requirements | Isolation |
+|---|---|---|
+| Linux PipeWire, including PipeWire-Pulse | `pw-dump`, `pw-record`, `pw-link` 1.0+; Pulse discovery tools when using Pulse | Exact per-spawn mpv client/PID, explicit passive links to its output ports, graph attestation before forwarding PCM |
+| Native PulseAudio / WSLg | `pactl` 16+ and `parec`; server protocol 13+ with sink-input monitoring | Exact mpv sink input; re-attested monitor-stream capture on moves, unavailable when the input disappears |
+| macOS | macOS 14.2+, bundled `TuiTunesSpectrum.app`, OS audio-capture consent | Positive inclusion of the mpv process in a private, non-exclusive, unmuted CoreAudio tap |
+| Other or unverifiable configuration | No supported capture | Unavailable status, no fallback recording; playback continues |
+
+For a source checkout on macOS, run `bun run build:spectrum-helper`. The helper belongs at `native/bin/TuiTunesSpectrum.app/Contents/MacOS/tuitunes-spectrum-tap`; compiled distributions keep the app beside `tuimusic`. No helper is downloaded at runtime. Permission refusal or revocation must not break playback; silence alone is not diagnosed as permission denial.
+
+The offline suite tests PCM/FFT and lifecycle ownership. `bun run test:spectrum:native` checks native protocol/buffer behavior, **not** TCC permission or real audio isolation. Private-server integration can be requested with:
+
+```bash
+TUITUNES_SPECTRUM_TEST_BACKEND=pipewire bun run test:spectrum
+TUITUNES_SPECTRUM_TEST_BACKEND=pulse bun run test:spectrum
+```
+
+Local Linux acceptance uses private null-sink servers and real mpv, never the desktop mix. The PipeWire 1.6.10 and native PulseAudio 17.0 matrix covers mono, stereo and 5.1 inputs, target-versus-decoy tones, target silence and unchanged routing/volume. Both stereo cases exercise application-owned capture across pause, resume and mpv crash recovery with the decoy still playing. The native Pulse stereo case also checks sink-move reattachment and target-removal shutdown. This does not validate macOS or WSLg.
+
+### Native acceptance and release approval
+
+Real macOS and WSLg acceptance is attended, not inferred from Linux or a green helper build. Before approving a release, record the commit/artifact digest, OS/backend/tool versions and results for:
+
+- Current-player tone appears in the expected FFT band; an unrelated process's different tone does not.
+- Output route remains unchanged; process exit, sink moves/device changes, pause/resume and format changes clean up/restart safely.
+- Capture disable, reduced motion, source switch, player recovery and quit drain all owned resources.
+- macOS initial consent, refusal/revocation and helper-bundle behavior; WSLg's actual sink-input monitor support.
+
+Attach that evidence to the release review. Publication must consume the same trusted CI artifacts and pass the protected `native-audio-release` environment's required maintainer approval. Missing native evidence remains a release blocker; compile, protocol and sanitizer checks do not replace it.
+
 ## Platform-Specific Issues
 
 ### WSL2 (Windows Subsystem for Linux 2)

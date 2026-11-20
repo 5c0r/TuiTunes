@@ -1,4 +1,5 @@
 import { TextAttributes } from '@opentui/core';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 const KNOWN_LANGUAGES: Record<string, string> = {
@@ -25,21 +26,18 @@ const KNOWN_LANGUAGES: Record<string, string> = {
 };
 
 export interface TranslationLanguageInputProps {
-  visible: boolean;
   value: string;
   currentLang: string | null;
   onInput: (value: string) => void;
 }
 
 export function TranslationLanguageInput({
-  visible,
   value,
   currentLang,
   onInput,
 }: TranslationLanguageInputProps) {
   const t = useTheme();
-  if (!visible) return null;
-
+  const p = usePresentation();
   const trimmed = value.trim().toLowerCase();
   const matchedName = KNOWN_LANGUAGES[trimmed];
   const valid = trimmed.length >= 2;
@@ -59,6 +57,7 @@ export function TranslationLanguageInput({
         height={8}
         border
         borderStyle="double"
+        {...p.borderProps}
         borderColor={valid && matchedName ? t.accent : trimmed.length > 0 ? t.yellow : t.dim}
         backgroundColor={t.bg}
         title="Translation Language"
@@ -77,7 +76,7 @@ export function TranslationLanguageInput({
         </box>
         <text fg={matchedName ? t.accent : t.dim} attributes={TextAttributes.DIM}>
           {matchedName
-            ? `→ ${matchedName}`
+            ? `${p.text('→')} ${matchedName}`
             : trimmed.length > 0
               ? `2-letter code (e.g. en, vi, ja)`
               : 'Enter a language code'}
