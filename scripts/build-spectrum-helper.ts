@@ -70,33 +70,38 @@ function clangPlusPlus(): string {
 const compiler = clangPlusPlus();
 const scratch = mkdtempSync(path.join(tmpdir(), 'tuitunes-spectrum-build-'));
 try {
-  const objects: string[] = [];
+  const slices: string[] = [];
   for (const arch of archs) {
-    const object = path.join(scratch, `spectrum-tap-${arch}.o`);
+    const slice = path.join(scratch, `spectrum-tap-${arch}`);
     const flags = [
       '-std=c++17',
-      '-ObjC++',
-      arch === 'x86_64' ? '-arch x86_64' : `-arch ${arch}`,
+      '-arch',
+      arch,
       `-mmacosx-version-min=${DEPLOYMENT_TARGET}`,
-      debug ? '-O0 -g' : '-O2 -DNDEBUG',
+      ...(debug ? ['-O0', '-g'] : ['-O2', '-DNDEBUG']),
       '-fobjc-arc',
       '-Wall',
       '-Wextra',
       `-I${sourceDir}`,
-      '-c',
       sourceFile,
+      '-framework',
+      'CoreAudio',
+      '-framework',
+      'CoreFoundation',
+      '-framework',
+      'Foundation',
       '-o',
-      object,
+      slice,
     ];
-    run(compiler, flags, `compiling spectrum-tap.mm for ${arch}`);
-    objects.push(object);
+    run(compiler, flags, `building spectrum-tap.mm for ${arch}`);
+    slices.push(slice);
   }
 
   const universal = path.join(scratch, EXECUTABLE_NAME);
-  if (objects.length === 1) {
-    copyFileSync(objects[0], universal);
+  if (slices.length === 1) {
+    copyFileSync(slices[0], universal);
   } else {
-    run('lipo', ['-create', ...objects, '-output', universal], 'lipo universal merge');
+    run('lipo', ['-create', ...slices, '-output', universal], 'lipo universal merge');
   }
 
   const stagedApp = path.join(scratch, APP_NAME);
@@ -106,7 +111,7 @@ try {
   copyFileSync(universal, path.join(contents, 'MacOS', EXECUTABLE_NAME));
   chmodSync(path.join(contents, 'MacOS', EXECUTABLE_NAME), 0o755);
   copyFileSync(path.join(sourceDir, 'Info.plist'), path.join(contents, 'Info.plist'));
-  Bun.write(path.join(contents, 'PkgInfo'), 'APPL????');
+  await Bun.write(path.join(contents, 'PkgInfo'), 'APPL????');
 
   // Ad-hoc signature: verifiable integrity for development/OSS artifacts; this
   // is explicitly NOT a Developer-ID/notarization claim, and nothing here

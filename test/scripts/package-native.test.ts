@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -95,9 +94,8 @@ function readJson(path: string): NativeArchiveManifest {
 
 describe('resolveRepoRoot', () => {
   test('resolves the checkout from the script location regardless of nesting', () => {
-    const root = resolveRepoRoot(join(import.meta.dir, '..', '..', 'test'));
-    expect(root.endsWith('tunefork')).toBe(true);
-    expect(existsSync(join(root, 'package.json'))).toBe(true);
+    const checkout = join(import.meta.dir, '..', '..');
+    expect(resolveRepoRoot(import.meta.dir)).toBe(checkout);
   });
 
   test('fails outside a checkout instead of guessing', () => {

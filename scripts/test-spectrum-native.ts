@@ -16,7 +16,8 @@ const root = path.resolve(import.meta.dir, '..');
 const sourceDir = path.join(root, 'native', 'macos');
 const tapSource = path.join(sourceDir, 'spectrum-tap.mm');
 const testSource = path.join(root, 'test', 'native', 'spectrum-pcm.test.mm');
-const helperExecutable = path.join(root, 'native', 'bin', 'TuiTunesSpectrum.app', 'Contents', 'MacOS', 'tuitunes-spectrum-tap');
+const helperBundle = path.join(root, 'native', 'bin', 'TuiTunesSpectrum.app');
+const helperExecutable = path.join(helperBundle, 'Contents', 'MacOS', 'tuitunes-spectrum-tap');
 const DEPLOYMENT_TARGET = '14.2';
 
 class VerificationFailure extends Error {}
@@ -132,7 +133,7 @@ try {
 
   // 4. Built helper bundle: signature + --version contract, when present.
   if (existsSync(helperExecutable)) {
-    runOrFail('codesign', ['--verify', '--strict', path.dirname(path.dirname(helperExecutable))], 'helper codesign verification');
+    runOrFail('codesign', ['--verify', '--strict', helperBundle], 'helper codesign verification');
     const version = Bun.spawnSync({ cmd: [helperExecutable, '--version'], stdout: 'pipe', stderr: 'pipe' });
     const versionLine = version.stdout.toString();
     if (version.exitCode !== 0 || versionLine !== 'TUITUNES_SPECTRUM_HELPER 1\n') {
