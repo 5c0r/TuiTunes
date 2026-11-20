@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, unlinkSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { unlinkSync } from 'node:fs';
 import type { Socket } from 'bun';
 import { MpvIPC } from '../../src/player/ipc';
 import { OBSERVED_PROPERTIES } from '../../src/player/types';
@@ -9,9 +7,6 @@ import { OBSERVED_PROPERTIES } from '../../src/player/types';
 type ServerSocket = Socket<unknown>;
 
 describe('MpvIPC', () => {
-  // Ensure logger directory exists so Logger.appendFileSync doesn't blow up
-  mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
-
   let socketPath: string;
   let server: ReturnType<typeof Bun.listen>;
   let ipc: MpvIPC;
@@ -153,9 +148,9 @@ describe('MpvIPC', () => {
   test('property-change event routing', async () => {
     await ipc.connect(socketPath);
 
-    let captured: { name: string; value: unknown } | null = null;
+    const captured: Array<{ name: string; value: unknown }> = [];
     ipc.onPropertyChange((name, value) => {
-      captured = { name, value };
+      captured.push({ name, value });
     });
 
     // Server sends a property-change event
@@ -165,7 +160,7 @@ describe('MpvIPC', () => {
     );
 
     await Bun.sleep(50);
-    expect(captured).toEqual({ name: 'time-pos', value: 42.5 });
+    expect(captured).toContainEqual({ name: 'time-pos', value: 42.5 });
   });
 
   test('property-change with absent data field', async () => {
@@ -237,17 +232,23 @@ describe('MpvIPC', () => {
 
   // ── Convenience method tests ──────────────────────────────────────
 
-  test('loadfile sends correct command', async () => {
+  test('loadfile sends correct command and resolves the ACK entry id', async () => {
     const commands: unknown[] = [];
     onServerData = (socket, data) => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
       socket.write(
-        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+        JSON.stringify({
+          error: 'success',
+          data: { playlist_entry_id: 3 },
+          request_id: msg.request_id,
+        }) + '\n',
       );
     };
     await ipc.connect(socketPath);
-    await ipc.loadfile('http://example.com/track.mp3');
+    await expect(ipc.loadfile('http://example.com/track.mp3')).resolves.toEqual({
+      playlistEntryId: 3,
+    });
     expect(commands[0]).toEqual(['loadfile', 'http://example.com/track.mp3', 'replace']);
   });
 
@@ -257,12 +258,55 @@ describe('MpvIPC', () => {
       const msg = JSON.parse(data.toString());
       commands.push(msg.command);
       socket.write(
-        JSON.stringify({ error: 'success', data: null, request_id: msg.request_id }) + '\n',
+        JSON.stringify({
+          error: 'success',
+          data: { playlist_entry_id: 7 },
+          request_id: msg.request_id,
+        }) + '\n',
       );
     };
     await ipc.connect(socketPath);
-    await ipc.loadfile('http://example.com/track.mp3', 'append-play');
+    await expect(ipc.loadfile('http://example.com/track.mp3', 'append-play')).resolves.toEqual({
+      playlistEntryId: 7,
+    });
     expect(commands[0]).toEqual(['loadfile', 'http://example.com/track.mp3', 'append-play']);
+  });
+
+  test('loadfile rejects success ACKs without a usable entry identity', async () => {
+    const replies: unknown[] = [];
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      const reply = JSON.stringify({
+        error: 'success',
+        data: replies.shift() ?? null,
+        request_id: msg.request_id,
+      });
+      socket.write(`${reply}\n`);
+    };
+    await ipc.connect(socketPath);
+    for (const bad of [
+      null,
+      { playlist_entry_id: -1 },
+      { playlist_entry_id: 1.5 },
+      { playlist_entry_id: '2' },
+      { playlist_entry_id: 2 ** 53 },
+      {},
+    ]) {
+      replies.push(bad);
+      await expect(ipc.loadfile('http://example.com/f.mp3')).rejects.toThrow('playlist_entry_id');
+    }
+    // Zero is a valid nonnegative identity.
+    replies.push({ playlist_entry_id: 0 });
+    await expect(ipc.loadfile('http://example.com/f.mp3')).resolves.toEqual({ playlistEntryId: 0 });
+  });
+
+  test('loadfile rejects an ACK whose data field is absent', async () => {
+    onServerData = (socket, data) => {
+      const msg = JSON.parse(data.toString());
+      socket.write(JSON.stringify({ error: 'success', request_id: msg.request_id }) + '\n');
+    };
+    await ipc.connect(socketPath);
+    await expect(ipc.loadfile('http://example.com/f.mp3')).rejects.toThrow('playlist_entry_id');
   });
 
   test('setPause sends set_property', async () => {

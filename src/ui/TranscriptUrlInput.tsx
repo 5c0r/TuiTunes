@@ -1,17 +1,14 @@
 import { TextAttributes } from '@opentui/core';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 export interface TranscriptUrlInputProps {
-  visible: boolean;
   value: string;
   onInput: (value: string) => void;
 }
-
-export function TranscriptUrlInput({ visible, value, onInput }: TranscriptUrlInputProps) {
+export function TranscriptUrlInput({ value, onInput }: TranscriptUrlInputProps) {
   const t = useTheme();
-
-  if (!visible) return null;
-
+  const p = usePresentation();
   const looksValid = value.trim().length === 0 || /^https?:\/\//.test(value.trim());
 
   return (
@@ -29,6 +26,7 @@ export function TranscriptUrlInput({ visible, value, onInput }: TranscriptUrlInp
         height={8}
         border
         borderStyle="double"
+        {...p.borderProps}
         borderColor={looksValid ? t.accent : t.red}
         backgroundColor={t.bg}
         title="Custom Transcript URL"

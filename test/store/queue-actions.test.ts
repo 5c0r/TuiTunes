@@ -1,20 +1,33 @@
 import { describe, expect, test } from 'bun:test';
-import type { Track } from '../../src/providers/types';
+import type { QueueState } from '../../src/store/queue';
 import {
-  addToQueue,
+  cycleRepeat,
+  enqueueEntries,
+  enqueueEntry,
+  nextEntryId,
   nextIndex,
   prevIndex,
-  removeFromQueue,
+  previousEntryId,
+  removeEntry,
+  selectEntry,
+  setShuffle,
   shuffleIndices,
 } from '../../src/store/queue-actions';
 
-const track = (id: string): Track => ({
-  id,
-  provider: 'test',
-  title: `Track ${id}`,
-  artist: `Artist ${id}`,
-  duration: 180,
+const empty: QueueState = { entries: [], order: [], cursorId: null, shuffle: false, repeat: 'off' };
+const entry = (entryId: string) => ({
+  entryId,
+  track: {
+    id: 'duplicate',
+    provider: 'youtube',
+    source: { kind: 'youtube' as const, videoId: 'duplicate' },
+    title: entryId,
+    artist: 'Artist',
+    duration: 1,
+  },
 });
+const populated = () =>
+  ['a', 'b', 'c'].reduce((state, id) => enqueueEntry(state, entry(id)), empty);
 
 describe('shuffleIndices', () => {
   test('returns array of length N', () => {
@@ -79,107 +92,62 @@ describe('prevIndex', () => {
   });
 });
 
-describe('addToQueue', () => {
-  test('add to empty → [track]', () => {
-    const t = track('a');
-    expect(addToQueue([], t)).toEqual([t]);
-  });
-
-  test('add to [a,b] → [a,b,c]', () => {
-    const a = track('a');
-    const b = track('b');
-    const c = track('c');
-    expect(addToQueue([a, b], c)).toEqual([a, b, c]);
-  });
+test('selection uses entry identity under shuffled order', () => {
+  const state = selectEntry({ ...populated(), shuffle: true, order: ['c', 'a', 'b'] }, 'a');
+  expect(nextEntryId(state)).toBe('b');
+  expect(previousEntryId(state)).toBe('c');
+  expect(nextEntryId({ ...state, cursorId: null })).toBeNull();
+});
+test('duplicates stay independently selectable and removal preserves live order', () => {
+  let state = selectEntry(populated(), 'b');
+  const removed = removeEntry(state, 'a');
+  expect(removed.state.cursorId).toBe('b');
+  expect(removed.state.order).toEqual(['b', 'c']);
+  state = setShuffle(removed.state, true, () => 0);
+  expect(state.entries.map((item) => item.entryId)).toEqual(['b', 'c']);
+  expect(state.order[0]).toBe('b');
+  expect(setShuffle(state, false).cursorId).toBe('b');
+});
+test('current removals advance, wrap only repeat-all, and always stop when empty', () => {
+  for (const repeat of ['off', 'track', 'all'] as const) {
+    const state = { ...populated(), repeat };
+    expect(removeEntry(selectEntry(state, 'b'), 'b').successorId).toBe('c');
+    expect(removeEntry(selectEntry(state, 'c'), 'c').successorId).toBe(
+      repeat === 'all' ? 'a' : null,
+    );
+    const single = selectEntry(enqueueEntry({ ...empty, repeat }, entry('a')), 'a');
+    expect(removeEntry(single, 'a').state.cursorId).toBeNull();
+  }
+  expect(cycleRepeat(cycleRepeat(cycleRepeat(empty))).repeat).toBe('off');
 });
 
-describe('removeFromQueue', () => {
-  test('remove index 1 from [a,b,c], current=2 → ([a,c], 1)', () => {
-    const a = track('a');
-    const b = track('b');
-    const c = track('c');
-    const [newQueue, newIndex] = removeFromQueue([a, b, c], 1, 2);
-    expect(newQueue).toEqual([a, c]);
-    expect(newIndex).toBe(1);
+describe('enqueueEntries', () => {
+  test('appends the whole batch once with fresh identities, preserving cursor/repeat/shuffle', () => {
+    const base = selectEntry(setShuffle(populated(), true), 'b');
+    // Repeated media rows stay separate queue identities.
+    const albumRow = entry('w');
+    const repeatedMedia = { entryId: 'w-again', track: albumRow.track };
+    const next = enqueueEntries(base, [albumRow, repeatedMedia]);
+    expect(next.order).toEqual([...base.order, albumRow.entryId, repeatedMedia.entryId]);
+    expect(next.entries).toEqual([...base.entries, albumRow, repeatedMedia]);
+    expect(next.cursorId).toBe(base.cursorId);
+    expect(next.shuffle).toBe(base.shuffle);
+    expect(next.repeat).toBe(base.repeat);
   });
 
-  test('remove index 0 from [a,b,c], current=0 → ([b,c], 0)', () => {
-    const a = track('a');
-    const b = track('b');
-    const c = track('c');
-    const [newQueue, newIndex] = removeFromQueue([a, b, c], 0, 0);
-    expect(newQueue).toEqual([b, c]);
-    expect(newIndex).toBe(0);
+  test('empty batch is a no-op returning the same state reference', () => {
+    const state = populated();
+    expect(enqueueEntries(state, [])).toBe(state);
   });
 
-  test('remove last item from [a], current=0 → ([], 0)', () => {
-    const a = track('a');
-    const [newQueue, newIndex] = removeFromQueue([a], 0, 0);
-    expect(newQueue).toEqual([]);
-    expect(newIndex).toBe(0);
-  });
-});
-
-// These tests validate the composition pattern used in app.tsx handleNext/handlePrev.
-// The bug fix: queue[shuffledIndices[nextIndex(...)]] instead of queue[nextIndex(...)].
-describe('shuffle + next/prev composition', () => {
-  const a = track('a');
-  const b = track('b');
-  const c = track('c');
-  const queue = [a, b, c];
-  // Shuffle order: C(2), A(0), B(1) — first played is C, then A, then B
-  const shuffledIndices = [2, 0, 1];
-
-  test('next from shuffle position 0 yields second shuffle entry', () => {
-    const next = nextIndex(0, queue.length, 'off');
-    expect(next).toBe(1);
-    const trackIdx = shuffledIndices[next!];
-    expect(queue[trackIdx]).toEqual(a); // second in shuffle order is A
+  test('duplicate identities inside the batch reject it before any mutation', () => {
+    const state = populated();
+    const duplicate = entry('dup');
+    expect(enqueueEntries(state, [duplicate, entry('ok'), { ...duplicate }])).toBe(state);
   });
 
-  test('next from shuffle position 1 yields third shuffle entry', () => {
-    const next = nextIndex(1, queue.length, 'off');
-    expect(next).toBe(2);
-    const trackIdx = shuffledIndices[next!];
-    expect(queue[trackIdx]).toEqual(b); // third in shuffle order is B
-  });
-
-  test('next from last shuffle position with repeat=all wraps to first', () => {
-    const next = nextIndex(2, queue.length, 'all');
-    expect(next).toBe(0);
-    const trackIdx = shuffledIndices[next!];
-    expect(queue[trackIdx]).toEqual(c); // wraps to first in shuffle order: C
-  });
-
-  test('next from last shuffle position with repeat=off returns null', () => {
-    expect(nextIndex(2, queue.length, 'off')).toBeNull();
-  });
-
-  test('repeat=track returns same shuffle entry', () => {
-    const next = nextIndex(1, queue.length, 'track');
-    expect(next).toBe(1);
-    const trackIdx = shuffledIndices[next!];
-    expect(queue[trackIdx]).toEqual(a); // repeat same: A
-  });
-
-  test('prev from shuffle position 2 yields second shuffle entry', () => {
-    const prev = prevIndex(2, queue.length, 'off');
-    expect(prev).toBe(1);
-    const trackIdx = shuffledIndices[prev!];
-    expect(queue[trackIdx]).toEqual(a);
-  });
-
-  test('prev from shuffle position 0 with repeat=all wraps to last', () => {
-    const prev = prevIndex(0, queue.length, 'all');
-    expect(prev).toBe(2);
-    const trackIdx = shuffledIndices[prev!];
-    expect(queue[trackIdx]).toEqual(b); // last in shuffle order: B
-  });
-
-  test('without shuffle, next goes sequentially through queue', () => {
-    // This is the old (broken) pattern — direct index into queue
-    const next = nextIndex(0, queue.length, 'off');
-    expect(next).toBe(1);
-    expect(queue[next!]).toEqual(b); // sequential: A→B
+  test('an identity already in the queue rejects the whole batch', () => {
+    const state = populated();
+    expect(enqueueEntries(state, [entry('fresh'), entry('b')])).toBe(state);
   });
 });

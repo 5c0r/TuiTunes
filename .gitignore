@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
-bun.lock
 
 # Build output
 dist/
+coverage/
+native/bin/
+artifacts/
 
 # Database
 *.db

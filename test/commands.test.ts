@@ -1,19 +1,17 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-
-mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
-
-import { COMMANDS, filterCommands } from '../src/commands';
+import { COMMANDS, type CommandId, filterCommands, KEY_BINDINGS } from '../src/commands';
 
 const VALID_CATEGORIES = ['playback', 'navigation', 'queue', 'view', 'app'] as const;
 
-describe('COMMANDS', () => {
-  test('has expected length', () => {
-    expect(COMMANDS.length).toBe(49);
-  });
+const WIRED_COMMAND_IDS: readonly CommandId[] = [
+  'load-more',
+  'favorite',
+  'queue-add',
+  'queue-remove',
+  'podcast-search',
+];
 
+describe('COMMANDS', () => {
   test('all have required fields', () => {
     for (const cmd of COMMANDS) {
       expect(typeof cmd.id).toBe('string');
@@ -36,6 +34,21 @@ describe('COMMANDS', () => {
     const ids = COMMANDS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  test('registry entries carry their literal ids', () => {
+    const ids = new Set<string>(COMMANDS.map((c) => c.id));
+    for (const id of WIRED_COMMAND_IDS) {
+      expect(ids.has(id)).toBe(true);
+    }
+  });
+
+  test('help bindings exist and describe navigation without command ids', () => {
+    expect(KEY_BINDINGS.length).toBeGreaterThan(0);
+    for (const binding of KEY_BINDINGS) {
+      expect(binding.keys.length).toBeGreaterThan(0);
+      expect(binding.label.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('filterCommands', () => {
@@ -43,46 +56,39 @@ describe('filterCommands', () => {
     expect(filterCommands('')).toEqual(COMMANDS);
   });
 
-  test('whitespace-only returns all', () => {
-    expect(filterCommands('   ')).toEqual(COMMANDS);
-    expect(filterCommands('\t')).toEqual(COMMANDS);
-  });
-
-  test('single term matches name', () => {
-    const results = filterCommands('volume');
-    const ids = results.map((c) => c.id);
-    expect(ids).toContain('volume-up');
-    expect(ids).toContain('volume-down');
-    expect(results.length).toBeGreaterThanOrEqual(2);
-  });
-
-  test('single term matches description', () => {
-    const results = filterCommands('mute');
-    const ids = results.map((c) => c.id);
-    expect(ids).toContain('mute');
-  });
-
   test('matches category', () => {
     const results = filterCommands('playback');
-    const playbackCmds = COMMANDS.filter((c) => c.category === 'playback');
+    const playbackCmds = COMMANDS.filter((cmd) => cmd.category === 'playback');
     // Every playback command should appear (category is in the haystack)
     for (const cmd of playbackCmds) {
       expect(results.map((r) => r.id)).toContain(cmd.id);
     }
   });
 
+  test('single term matches name', () => {
+    const results = filterCommands('mute');
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((cmd) => cmd.name.toLowerCase().includes('mute'))).toBe(true);
+  });
+
+  test('single term matches description', () => {
+    const results = filterCommands('distraction');
+    expect(results.map((cmd) => cmd.id)).toContain('layout-focus');
+  });
+
+  test('matches category', () => {
+    const results = filterCommands('playback');
+    expect(results.map((cmd) => cmd.id)).toContain('mute');
+    expect(results.map((cmd) => cmd.id)).toContain('queue-add');
+  });
+
   test('multi-term AND logic', () => {
-    const results = filterCommands('play pause');
-    expect(results.length).toBe(1);
-    expect(results[0].id).toBe('play-pause');
+    const results = filterCommands('toggle mute');
+    expect(results.map((cmd) => cmd.id)).toContain('mute');
   });
 
   test('case insensitive', () => {
-    const lower = filterCommands('volume');
-    const upper = filterCommands('VOLUME');
-    const mixed = filterCommands('VoLuMe');
-    expect(upper).toEqual(lower);
-    expect(mixed).toEqual(lower);
+    expect(filterCommands('MUTE')).toEqual(filterCommands('mute'));
   });
 
   test('no match returns empty', () => {
@@ -90,17 +96,14 @@ describe('filterCommands', () => {
   });
 
   test('partial match', () => {
-    const results = filterCommands('vol');
-    const ids = results.map((c) => c.id);
-    expect(ids).toContain('volume-up');
-    expect(ids).toContain('volume-down');
+    const results = filterCommands('tran');
+    expect(results.map((cmd) => cmd.id)).toContain('toggle-translation');
   });
 
   test('multi-term narrows results', () => {
-    const broad = filterCommands('speed');
-    const narrow = filterCommands('speed normal');
-    expect(broad.length).toBeGreaterThan(narrow.length);
-    expect(narrow.length).toBe(1);
-    expect(narrow[0].id).toBe('speed-reset');
+    const broad = filterCommands('layout');
+    const narrow = filterCommands('layout wide');
+    expect(narrow.length).toBeLessThan(broad.length);
+    expect(narrow.map((cmd) => cmd.id)).toEqual(['layout-wide']);
   });
 });

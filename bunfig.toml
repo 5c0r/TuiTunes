@@ -1,2 +1,5 @@
 [install]
 peer = false
+
+[test]
+preload = ["./test/preload.ts"]

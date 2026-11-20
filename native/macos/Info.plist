@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>tuitunes-spectrum-tap</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.5c0r.tuitunes.spectrum</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>TuiTunes Spectrum</string>
+	<key>CFBundleDisplayName</key>
+	<string>TuiTunes Spectrum</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.2</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>TuiTunes analyzes the audio its own player process plays in order to draw the spectrum. It never records other apps, system mix, or your microphone.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>

@@ -3,8 +3,9 @@ import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
 import { useEffect, useRef } from 'react';
 import type { LyricLine } from '../providers/lyrics';
-import { lyricsDataAtom, lyricsLoadingAtom } from '../store/lyrics';
+import { lyricsDataAtom, lyricsErrorAtom, lyricsLoadingAtom } from '../store/lyrics';
 import { playerPositionAtom } from '../store/player';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 /**
@@ -85,11 +86,13 @@ function findCurrentSegment(segments: LyricLine[], position: number): number {
  */
 export function Transcript() {
   const t = useTheme();
+
   const data = useAtomValue(lyricsDataAtom);
   const loading = useAtomValue(lyricsLoadingAtom);
+  const error = useAtomValue(lyricsErrorAtom);
   const position = useAtomValue(playerPositionAtom);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
-
+  const p = usePresentation(scrollRef);
   const paragraphs = data?.synced ? groupIntoParagraphs(data.lines) : [];
   const currentParaIdx = paragraphs.length > 0 ? findCurrentParagraph(paragraphs, position) : -1;
 
@@ -107,12 +110,19 @@ export function Transcript() {
       <box
         border
         borderStyle="rounded"
+        {...p.borderProps}
         borderColor={t.border}
         title="Transcript"
         flexGrow={1}
         paddingLeft={1}
+        flexDirection="column"
       >
         <text fg={t.dim}>Loading transcript...</text>
+        {error && (
+          <text fg={t.red} truncate>
+            {error}
+          </text>
+        )}
       </box>
     );
   }
@@ -122,12 +132,14 @@ export function Transcript() {
       <box
         border
         borderStyle="rounded"
+        {...p.borderProps}
         borderColor={t.border}
         title="Transcript"
         flexGrow={1}
         paddingLeft={1}
+        flexDirection="column"
       >
-        <text fg={t.dim}>No transcript available</text>
+        <text fg={t.dim}>{error ?? 'No transcript available'}</text>
       </box>
     );
   }
@@ -138,12 +150,18 @@ export function Transcript() {
       <box
         border
         borderStyle="rounded"
+        {...p.borderProps}
         borderColor={t.border}
         title="Transcript"
         flexGrow={1}
         flexDirection="column"
       >
-        <scrollbox ref={scrollRef}>
+        <scrollbox ref={scrollRef} {...p.scrollbarProps}>
+          {error && (
+            <text fg={t.red} truncate>
+              {error}
+            </text>
+          )}
           <text fg={t.fg} wrapMode="word" paddingLeft={1} paddingRight={1}>
             {data.lines.map((l) => l.text).join(' ')}
           </text>
@@ -151,7 +169,7 @@ export function Transcript() {
         <box paddingLeft={1}>
           <text fg={t.border} attributes={TextAttributes.DIM}>
             Source: {data.source}
-            {data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
+            {data.sourceUrl ? ` ${p.text('•')} ${data.sourceUrl}` : ''}
           </text>
         </box>
       </box>
@@ -163,12 +181,18 @@ export function Transcript() {
     <box
       border
       borderStyle="rounded"
+      {...p.borderProps}
       borderColor={t.accent}
       title="Transcript"
       flexGrow={1}
       flexDirection="column"
     >
-      <scrollbox ref={scrollRef}>
+      <scrollbox ref={scrollRef} {...p.scrollbarProps}>
+        {error && (
+          <text fg={t.red} truncate paddingLeft={2}>
+            {error}
+          </text>
+        )}
         {paragraphs.map((para, paraIdx) => {
           const isPast = currentParaIdx >= 0 && paraIdx < currentParaIdx;
           const isCurrent = currentParaIdx === paraIdx;
@@ -216,7 +240,7 @@ export function Transcript() {
       <box paddingLeft={1}>
         <text fg={t.border} attributes={TextAttributes.DIM}>
           Source: {data.source}
-          {data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
+          {data.sourceUrl ? ` ${p.text('•')} ${data.sourceUrl}` : ''}
         </text>
       </box>
     </box>

@@ -1,5 +1,32 @@
 export type PlayerState = 'stopped' | 'playing' | 'paused' | 'buffering';
 
+/** Options for PlayerController.play. */
+export interface PlayerLoadOptions {
+  /**
+   * Source-switch semantics: keep mpv's global pause untouched across the
+   * loadfile — no setPause(false) is sent and userPaused is not reset, so
+   * the actual pause state (including user changes made while the
+   * replacement is still loading) carries through to the new file.
+   */
+  preservePause?: boolean;
+}
+
+/** Identity of the mpv process actually backing playback. */
+export interface PlayerProcessIdentity {
+  /** Unix socket the controller's IPC session is connected to. */
+  socketPath: string;
+  /** OS pid of the owned mpv child. */
+  pid: number;
+  /** Unique --audio-client-name passed to this actual spawn. */
+  clientName: string;
+}
+
+/**
+ * Normalized audio backend derived from mpv's current-ao (observer 14).
+ * null means no audio output has been reported yet.
+ */
+export type PlayerAudioBackend = 'pipewire' | 'pulse' | 'coreaudio' | 'unsupported' | null;
+
 export interface MpvResponse {
   error: string;
   data?: unknown;
@@ -31,6 +58,7 @@ export interface MpvPropertyMap {
   'core-idle': boolean;
   'paused-for-cache': boolean;
   speed: number;
+  'current-ao': string;
 }
 
 export const OBSERVED_PROPERTIES: ReadonlyArray<{ id: number; name: keyof MpvPropertyMap }> = [
@@ -47,7 +75,31 @@ export const OBSERVED_PROPERTIES: ReadonlyArray<{ id: number; name: keyof MpvPro
   { id: 11, name: 'core-idle' },
   { id: 12, name: 'paused-for-cache' },
   { id: 13, name: 'speed' },
+  { id: 14, name: 'current-ao' },
 ] as const;
+
+/**
+ * Validate an mpv playlist entry identity: a nonnegative safe integer.
+ * Used both for loadfile ACK payloads and event fields.
+ */
+export function parsePlaylistEntryId(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Normalize a current-ao report into the capture-capable backend set.
+ * Empty/absent reports decode to null (unknown); any other named output —
+ * including the explicit `null` sink — is a known-uncapturable backend.
+ */
+export function normalizeAudioBackend(value: unknown): PlayerAudioBackend {
+  if (typeof value !== 'string') return null;
+  const name = value.trim().toLowerCase();
+  if (name.length === 0) return null;
+  if (name === 'pipewire') return 'pipewire';
+  if (name === 'pulse' || name === 'pulseaudio') return 'pulse';
+  if (name === 'coreaudio') return 'coreaudio';
+  return 'unsupported';
+}
 
 // Discriminant: events always have `event` field. A message may have both
 // `event` and `request_id` (mpv does this), so `event` takes precedence.

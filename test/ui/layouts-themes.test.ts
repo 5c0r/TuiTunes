@@ -1,10 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-
-mkdirSync(join(homedir(), '.config', 'tuimusic'), { recursive: true });
-
 import {
   LAYOUT_DESCRIPTIONS,
   LAYOUT_LABELS,

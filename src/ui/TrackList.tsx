@@ -3,16 +3,15 @@ import { TextAttributes } from '@opentui/core';
 import { useEffect, useRef } from 'react';
 import type { Track } from '../providers/types';
 import { formatTime } from '../utils/format';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 export interface TrackListProps {
   tracks: Track[];
   focused: boolean;
   selectedIndex: number;
-  onSelect: (index: number) => void;
-  onPlay: (track: Track) => void;
-  /** ID of the currently playing track (highlights with ▶). */
-  playingTrackId?: string;
+  /** Index of the currently playing row (highlighted with >), or -1. */
+  playingIndex?: number;
   /** If true, show [x] remove hint on selected row. */
   showRemoveHint?: boolean;
 }
@@ -20,12 +19,12 @@ export interface TrackListProps {
 export function TrackList({
   tracks,
   selectedIndex,
-  onPlay: _onPlay,
-  playingTrackId,
+  playingIndex = -1,
   showRemoveHint,
 }: TrackListProps) {
   const t = useTheme();
   const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const p = usePresentation(scrollRef);
 
   // Let OpenTUI handle scroll: scrollChildIntoView scrolls the minimum
   // amount needed to keep the selected row visible (page-turn style).
@@ -44,14 +43,14 @@ export function TrackList({
   }
 
   return (
-    <scrollbox ref={scrollRef}>
+    <scrollbox ref={scrollRef} {...p.scrollbarProps}>
       {tracks.map((track, i) => {
         const selected = i === selectedIndex;
-        const playing = track.id === playingTrackId;
+        const playing = i === playingIndex;
         const num = String(i + 1).padStart(2, ' ');
         const dur = formatTime(track.duration);
 
-        const icon = playing ? '▶ ' : selected ? '▸ ' : '  ';
+        const icon = playing ? `${p.text('▶')} ` : selected ? `${p.text('▸')} ` : '  ';
         const iconColor = playing ? t.green : t.accent;
         const titleColor = playing ? t.green : selected ? t.accent : t.fg;
         const metaColor = playing ? t.playingFg : selected ? t.dim : t.dim;
@@ -60,7 +59,7 @@ export function TrackList({
 
         return (
           <box
-            key={track.id + i}
+            key={`${track.id}-${i}`}
             id={`track-row-${i}`}
             flexDirection="column"
             backgroundColor={bg}
@@ -77,7 +76,7 @@ export function TrackList({
               {playing && (
                 <text fg={t.green} attributes={TextAttributes.BOLD}>
                   {' '}
-                  ♪{' '}
+                  {p.text('♪')}{' '}
                 </text>
               )}
               <text fg={t.dim}> {dur}</text>
@@ -87,7 +86,7 @@ export function TrackList({
               <text fg={metaColor}>
                 {'      '}
                 {track.artist}
-                {track.album ? ` — ${track.album}` : ''}
+                {track.album ? `${p.text(' — ')}${track.album}` : ''}
               </text>
             </box>
           </box>

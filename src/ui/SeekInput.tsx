@@ -2,13 +2,12 @@ import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
 import { playerDurationAtom, playerPositionAtom } from '../store/player';
 import { formatTime } from '../utils/format';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 export interface SeekInputProps {
-  visible: boolean;
   value: string;
   onInput: (value: string) => void;
-  onSubmit: () => void;
 }
 
 /**
@@ -38,12 +37,11 @@ export function parseTimeInput(input: string): number | null {
   return null;
 }
 
-export function SeekInput({ visible, value, onInput }: SeekInputProps) {
+export function SeekInput({ value, onInput }: SeekInputProps) {
+  const p = usePresentation();
   const t = useTheme();
   const position = useAtomValue(playerPositionAtom);
   const duration = useAtomValue(playerDurationAtom);
-
-  if (!visible) return null;
 
   const parsed = parseTimeInput(value);
   const outOfRange = parsed !== null && duration > 0 && parsed > duration;
@@ -67,7 +65,7 @@ export function SeekInput({ visible, value, onInput }: SeekInputProps) {
         border
         borderStyle="double"
         borderColor={badFormat || outOfRange ? t.red : valid ? t.accent : t.yellow}
-        backgroundColor={t.bg}
+        {...p.borderProps}
         title="Jump to Time"
         flexDirection="column"
         alignItems="center"
@@ -87,7 +85,7 @@ export function SeekInput({ visible, value, onInput }: SeekInputProps) {
             : outOfRange
               ? `${formatTime(parsed!)} exceeds track length (${formatTime(duration)})`
               : parsed !== null
-                ? `→ ${formatTime(parsed)}`
+                ? `${p.text('→')} ${formatTime(parsed)}`
                 : 'Enter time as m:ss, h:mm:ss, or seconds'}
         </text>
       </box>

@@ -6,7 +6,7 @@ export interface Command {
   category: 'playback' | 'navigation' | 'queue' | 'view' | 'app';
 }
 
-export const COMMANDS: Command[] = [
+export const COMMANDS = [
   {
     id: 'play-pause',
     name: 'Play / Pause',
@@ -283,12 +283,109 @@ export const COMMANDS: Command[] = [
     description: 'Change target language for lyrics translation',
     category: 'view',
   },
+  {
+    id: 'source-selected',
+    name: 'Source for Selected Episode',
+    description: 'Remember RSS, matched or custom YouTube for this episode',
+    category: 'playback',
+  },
+  {
+    id: 'source-current',
+    name: 'Source for Playing Episode',
+    description: 'Switch this episode source; different audio restarts at zero',
+    category: 'playback',
+  },
+  {
+    id: 'browse-artist',
+    name: 'Open Primary Artist',
+    description: 'Browse releases and top songs of the selected music artist',
+    category: 'navigation',
+  },
+  {
+    id: 'browse-album',
+    name: 'Open Album',
+    description: 'Browse the selected track album or release',
+    category: 'navigation',
+  },
+  {
+    id: 'catalog-back',
+    name: 'Back in Music Browser',
+    description: 'Return to the previous artist, album or list',
+    category: 'navigation',
+  },
+  {
+    id: 'catalog-tab',
+    name: 'Next Artist Tab',
+    description: 'Cycle albums, singles and top songs',
+    category: 'navigation',
+  },
+  {
+    id: 'catalog-retry',
+    name: 'Retry Music Browser',
+    description: 'Retry the failed catalog request',
+    category: 'navigation',
+  },
+  {
+    id: 'album-play',
+    name: 'Play Album',
+    description: 'Append the complete album and start its first new queue entry',
+    category: 'queue',
+  },
+  {
+    id: 'album-queue',
+    name: 'Add Album to Queue',
+    description: 'Append the complete album without interrupting playback',
+    category: 'queue',
+  },
+  {
+    id: 'toggle-ascii',
+    name: 'Toggle ASCII Mode',
+    description: 'Use ASCII chrome; preserve Unicode media content',
+    category: 'view',
+  },
+  {
+    id: 'toggle-reduced-motion',
+    name: 'Toggle Reduced Motion',
+    description: 'Stop decorative animation and spectrum analysis',
+    category: 'view',
+  },
+  {
+    id: 'toggle-spectrum',
+    name: 'Toggle Audio Spectrum',
+    description: 'Analyze only this player audio; optional capture prerequisites apply',
+    category: 'view',
+  },
   { id: 'help', name: 'Help', description: 'Show keybindings', shortcut: '?', category: 'app' },
   { id: 'quit', name: 'Quit', description: 'Exit TuiTunes', shortcut: 'ctrl+q', category: 'app' },
+] as const satisfies readonly Command[];
+
+/** Every executable command id, derived from the literal registry. */
+export type CommandId = (typeof COMMANDS)[number]['id'];
+
+/** A single registry entry with its literal id intact. */
+export type CommandEntry = (typeof COMMANDS)[number];
+
+/**
+ * Dispatcher bindings that have no command id: pure navigation and input
+ * handling. Help entries and shortcut displays are derived from this list plus
+ * the command registry, so both stay in sync with the keyboard dispatcher.
+ */
+export interface KeyBinding {
+  keys: string;
+  label: string;
+}
+
+export const KEY_BINDINGS: readonly KeyBinding[] = [
+  { keys: 'j/k', label: 'Navigate list / sidebar' },
+  { keys: 'g/G', label: 'Go to top / bottom' },
+  { keys: 'enter', label: 'Play selected / open podcast' },
+  { keys: 'escape', label: 'Back to main' },
+  { keys: 'left/right', label: 'Change artist browser tab' },
+  { keys: 'tab', label: 'Cycle focus' },
 ];
 
 /** Fuzzy filter commands by query. Matches against name and description. */
-export function filterCommands(query: string): Command[] {
+export function filterCommands(query: string): readonly CommandEntry[] {
   if (!query.trim()) return COMMANDS;
   const terms = query.toLowerCase().split(/\s+/);
   return COMMANDS.filter((cmd) => {

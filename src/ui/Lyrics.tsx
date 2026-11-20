@@ -3,9 +3,15 @@ import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
 import { useEffect, useRef } from 'react';
 import type { LyricLine } from '../providers/lyrics';
-import { lyricsDataAtom, lyricsLoadingAtom, translationLoadingAtom } from '../store/lyrics';
+import {
+  lyricsDataAtom,
+  lyricsErrorAtom,
+  lyricsLoadingAtom,
+  translationLoadingAtom,
+} from '../store/lyrics';
 import { playerPositionAtom } from '../store/player';
 import { Logger } from '../utils/logger';
+import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
 
 function formatTimestamp(seconds: number): string {
@@ -36,8 +42,10 @@ export function Lyrics() {
   const data = useAtomValue(lyricsDataAtom);
   const loading = useAtomValue(lyricsLoadingAtom);
   const translating = useAtomValue(translationLoadingAtom);
+  const error = useAtomValue(lyricsErrorAtom);
   const position = useAtomValue(playerPositionAtom);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const p = usePresentation(scrollRef);
 
   // Compute current line BEFORE early returns so the effect always has it.
   // When data is absent, currentIdx stays -1 and the effect is a no-op.
@@ -66,7 +74,7 @@ export function Lyrics() {
   }, [data]);
 
   const titleSuffix = data?.translatedTo
-    ? ` [→ ${data.translatedTo.toUpperCase()}]`
+    ? ` [${p.text('→')} ${data.translatedTo.toUpperCase()}]`
     : translating
       ? ' [translating...]'
       : '';
@@ -76,12 +84,19 @@ export function Lyrics() {
       <box
         border
         borderStyle="rounded"
+        {...p.borderProps}
         borderColor={t.border}
         title={`Lyrics${titleSuffix}`}
         flexGrow={1}
         paddingLeft={1}
+        flexDirection="column"
       >
         <text fg={t.dim}>Loading lyrics...</text>
+        {error && (
+          <text fg={t.red} truncate>
+            {error}
+          </text>
+        )}
       </box>
     );
   }
@@ -91,12 +106,14 @@ export function Lyrics() {
       <box
         border
         borderStyle="rounded"
+        {...p.borderProps}
         borderColor={t.border}
         title="Lyrics"
         flexGrow={1}
         paddingLeft={1}
+        flexDirection="column"
       >
-        <text fg={t.dim}>No lyrics available</text>
+        <text fg={t.dim}>{error ?? 'No lyrics available'}</text>
       </box>
     );
   }
@@ -105,18 +122,26 @@ export function Lyrics() {
     <box
       border
       borderStyle="rounded"
+      {...p.borderProps}
       borderColor={t.border}
       title={`Lyrics${titleSuffix}`}
       flexGrow={1}
       flexDirection="column"
     >
-      <scrollbox ref={scrollRef}>
+      <scrollbox ref={scrollRef} {...p.scrollbarProps}>
+        {error && (
+          <box paddingLeft={1}>
+            <text fg={t.red} truncate>
+              {error}
+            </text>
+          </box>
+        )}
         {data.lines.map((line, i) => {
           if (data.synced) {
             const distance = currentIdx >= 0 ? Math.abs(i - currentIdx) : Infinity;
             const color = lineColor(distance, t);
             const isCurrent = i === currentIdx;
-            const marker = isCurrent ? '♪ ' : '  ';
+            const marker = isCurrent ? `${p.text('♪')} ` : '  ';
             const ts = `[${formatTimestamp(line.time)}]`;
 
             return (
@@ -151,7 +176,7 @@ export function Lyrics() {
       <box paddingLeft={1} paddingTop={1}>
         <text fg={t.border} attributes={TextAttributes.DIM}>
           Source: {data.source}
-          {data.sourceUrl ? ` • ${data.sourceUrl}` : ''}
+          {data.sourceUrl ? ` ${p.text('•')} ${data.sourceUrl}` : ''}
         </text>
       </box>
     </box>
