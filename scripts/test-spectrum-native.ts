@@ -30,14 +30,6 @@ if (process.platform !== 'darwin') {
   process.exit(1);
 }
 
-function compiler(): string {
-  const found = Bun.spawnSync({ cmd: ['xcrun', '--find', 'clang++'], stdout: 'pipe' });
-  if (found.exitCode === 0) {
-    const first = found.stdout.toString().trim().split('\n')[0];
-    if (first !== undefined && first.length > 0) return first;
-  }
-  return 'clang++';
-}
 function runOrFail(cmd: string, args: readonly string[], label: string): string {
   const proc = Bun.spawnSync({ cmd: [cmd, ...args], stdout: 'pipe', stderr: 'pipe' });
   if (proc.exitCode !== 0) {
@@ -48,18 +40,20 @@ function runOrFail(cmd: string, args: readonly string[], label: string): string 
   return proc.stdout.toString();
 }
 
+function compile(args: readonly string[], label: string): void {
+  runOrFail('xcrun', ['--sdk', 'macosx', 'clang++', ...args], label);
+}
+
 const scratch = mkdtempSync(path.join(tmpdir(), 'tuitunes-spectrum-native-'));
 let failures = 0;
 try {
-  const cxx = compiler();
-
   // 1. Pure PCM tests, plain build.
   const plainBinary = path.join(scratch, 'pcm-plain');
-  runOrFail(
-    cxx,
+  compile(
     [
       '-std=c++17',
-      '-ObjC++',
+      '-x',
+      'c++',
       `-mmacosx-version-min=${DEPLOYMENT_TARGET}`,
       '-O1',
       '-Wall',
@@ -75,11 +69,11 @@ try {
 
   // 2. Pure PCM tests under address/undefined-behavior sanitizers.
   const sanitizedBinary = path.join(scratch, 'pcm-sanitized');
-  runOrFail(
-    cxx,
+  compile(
     [
       '-std=c++17',
-      '-ObjC++',
+      '-x',
+      'c++',
       `-mmacosx-version-min=${DEPLOYMENT_TARGET}`,
       '-O1',
       '-g',
@@ -107,11 +101,9 @@ try {
   }
 
   // 3. Tap helper compile proof with warnings surfaced (no run: no consent).
-  runOrFail(
-    cxx,
+  compile(
     [
       '-std=c++17',
-      '-ObjC++',
       '-arch',
       'arm64',
       '-arch',

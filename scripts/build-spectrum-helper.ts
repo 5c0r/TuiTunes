@@ -58,16 +58,6 @@ if (process.platform !== 'darwin') {
   process.exit(1);
 }
 
-function clangPlusPlus(): string {
-  try {
-    const found = run('xcrun', ['--find', 'clang++'], 'xcrun --find clang++').trim();
-    return found.split('\n')[0] ?? 'clang++';
-  } catch {
-    return 'clang++';
-  }
-}
-
-const compiler = clangPlusPlus();
 const scratch = mkdtempSync(path.join(tmpdir(), 'tuitunes-spectrum-build-'));
 try {
   const slices: string[] = [];
@@ -93,7 +83,7 @@ try {
       '-o',
       slice,
     ];
-    run(compiler, flags, `building spectrum-tap.mm for ${arch}`);
+    run('xcrun', ['--sdk', 'macosx', 'clang++', ...flags], `building spectrum-tap.mm for ${arch}`);
     slices.push(slice);
   }
 
