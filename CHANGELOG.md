@@ -1,3 +1,35 @@
+# 1.0.0 (2026-11-21)
+
+
+### Bug Fixes
+
+* block Ctrl shortcuts when input is active ([1dcac11](https://github.com/5c0r/TuiTunes/commit/1dcac11b37024c9e8117816181ed2db02e8ae72b))
+* **ci:** build the native helper and isolate audio jobs ([c748633](https://github.com/5c0r/TuiTunes/commit/c7486337846304fd1134d9283806a4e0c20ffd5b))
+* **ci:** compile the native helper against the macOS SDK ([b2cdcce](https://github.com/5c0r/TuiTunes/commit/b2cdcceaba0d7af677a27f123cfde2b9940f1db4))
+* **ci:** keep macOS ASan and UBSan without unsupported leak checks ([1d8ad76](https://github.com/5c0r/TuiTunes/commit/1d8ad76172d1ff7d04c5c3145022bb3b9977c25f))
+* **ci:** use declared CoreAudio tap APIs ([a956626](https://github.com/5c0r/TuiTunes/commit/a9566269b872db6fe6bd0040e3a45431e4ae21ff))
+* ensure mpv is killed on exit ([3057258](https://github.com/5c0r/TuiTunes/commit/30572581c8fb37ef84eecedb769185c5ed549d7c))
+* improve scroll behavior for track list, lyrics, and transcript ([12c8b9c](https://github.com/5c0r/TuiTunes/commit/12c8b9cbbbba4b94f3f6eb57a323327448bdf0e2))
+* make Ctrl+1/2 section switch truly global ([9bdb054](https://github.com/5c0r/TuiTunes/commit/9bdb054a99815246b4213146abf5c5345498a8d0))
+* make Ctrl+F find work without toggling lyrics panel first ([0dee99c](https://github.com/5c0r/TuiTunes/commit/0dee99c757b57cb241e084f368a08c14cd5db9ed))
+* **player:** clamp progress fraction ([18bc3e8](https://github.com/5c0r/TuiTunes/commit/18bc3e8d8206269280abe2e84941d9a4069fbb35))
+* prevent auto-fetch lyrics from overwriting podcast transcript ([ea42b3c](https://github.com/5c0r/TuiTunes/commit/ea42b3ca804b1e445fbbac56a2c0783414332163))
+* repeat-one now works for non-queue playback ([89c8a8a](https://github.com/5c0r/TuiTunes/commit/89c8a8a57bc2fc7b6ff793a72529c42540b7f1ab))
+* **search:** preserve pagination after rejection ([775b45d](https://github.com/5c0r/TuiTunes/commit/775b45d424591fead99a5f5797adc37e5c7b5784))
+* **search:** prevent stale result updates ([a4cf3e5](https://github.com/5c0r/TuiTunes/commit/a4cf3e5872529e30577fe28b2483f302953acad3))
+* sync keybindings across all sources, add responsive layout ([8d0a5fe](https://github.com/5c0r/TuiTunes/commit/8d0a5fe131df3bdc0174e50508a0d66260bf8aa8))
+* use scrollChildIntoView for all scroll behavior ([90122bc](https://github.com/5c0r/TuiTunes/commit/90122bc882efdb3fc0541b9b086ad15c4d65b0b0))
+* vertical layout stacks lyrics/playlist top-to-bottom ([85ef0f7](https://github.com/5c0r/TuiTunes/commit/85ef0f7b0493b5b7dc6d3cf3783ce94a29967bab))
+
+
+### Features
+
+* add lyrics translation with multi-provider support ([4c64fa8](https://github.com/5c0r/TuiTunes/commit/4c64fa8b481619651fcbf410a744177407b9044a))
+* add podcast source selection, catalog browsing and audio spectrum ([4461466](https://github.com/5c0r/TuiTunes/commit/44614664486a8fa4c03fbdcbfb425636d264cded))
+* add search suggestions, unlimited pagination, and transcript search ([1160450](https://github.com/5c0r/TuiTunes/commit/1160450a125125cf4bfe021784099cc6e2ea9379))
+* add vertical layout preset for narrow terminals ([398d1fb](https://github.com/5c0r/TuiTunes/commit/398d1fb1a7e339b2173a4887d3727c4cec7e9b3a))
+* **player:** track all spawned mpv processes for guaranteed cleanup ([7692a35](https://github.com/5c0r/TuiTunes/commit/7692a35a27d19bcf2f2953fdf5815db74f6e1e6c))
+
 # Changelog
 
 ## 0.4.0-alpha.1 (2026-04-19)
