@@ -7,7 +7,12 @@ import { mediaKey } from '../providers/media';
 import type { extractYouTubeSrt } from '../providers/podcast-youtube';
 import { parseSrt } from '../providers/subtitle-parser';
 import type { fetchTranscriptUrl } from '../providers/transcript';
-import { type getTranslationProvider, normalizeLingvaInstance } from '../providers/translate';
+import {
+  type getTranslationProvider,
+  normalizeLingvaInstance,
+  normalizeLibreTranslateEndpoint,
+  type TranslationProvider,
+} from '../providers/translate';
 import { alignNativeTranslation, type getTranslatedTranscript } from '../providers/youtube';
 import { configAtom } from '../store/config';
 
@@ -37,11 +42,20 @@ export interface LyricsDependencies {
 export interface LyricsSession {
   reload(): Promise<void>;
   setTranscriptSource(source: TranscriptSelection): Promise<void>;
+  /**
+   * Verify a translation configuration by translating synthetic text
+   * through the configured provider. Never uses playback data and never
+   * touches lyrics/translation/cache state; rejects with the provider error.
+   */
+  testTranslation(config: TuiTunesConfig, signal: AbortSignal): Promise<void>;
   dispose(): Promise<void>;
 }
 function hash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
+
+/** Synthetic text used by testTranslation; never derived from playback data. */
+const TEST_TRANSLATION_TEXT = 'Hello';
 
 /**
  * Only translation-affecting config fields restart translation. Display-only
@@ -52,6 +66,8 @@ function translationFingerprint(config: TuiTunesConfig): string {
   return JSON.stringify([
     config.translationLanguage,
     config.translationProvider,
+    config.translationSourceLanguage,
+    config.libreTranslateEndpoint,
     config.deeplApiKey,
     config.lingvaInstance,
   ]);
@@ -72,6 +88,14 @@ export function createLyricsSession(store: Store, deps: LyricsDependencies): Lyr
     store.set(lyricsErrorAtom, message);
     Logger.warn(`Lyrics: ${message}`);
   }
+
+  function providerFromConfig(config: TuiTunesConfig): TranslationProvider {
+    return deps.translationProvider(config.translationProvider, {
+      deeplApiKey: config.deeplApiKey ?? undefined,
+      lingvaInstance: config.lingvaInstance ?? undefined,
+      libreTranslateEndpoint: config.libreTranslateEndpoint ?? undefined,
+    });
+  }
   function cancelTranslation(): void {
     ++translationGeneration;
     translationController?.abort();
@@ -88,32 +112,36 @@ export function createLyricsSession(store: Store, deps: LyricsDependencies): Lyr
     const config = store.get(configAtom),
       target = store.get(playerPlaybackAtom);
     const targetLang = config.translationLanguage || 'en';
-    const provider = deps.translationProvider(config.translationProvider, {
-      deeplApiKey: config.deeplApiKey ?? undefined,
-      lingvaInstance: config.lingvaInstance ?? undefined,
-    });
+    const provider = providerFromConfig(config);
     const sourceLang =
-      document.original.originalLanguage || (provider.id === 'mymemory' ? 'en' : 'auto');
+      config.translationSourceLanguage || document.original.originalLanguage || 'auto';
     const current = () =>
       !disposed &&
       !controller.signal.aborted &&
       generation === translationGeneration &&
       store.get(lyricsDocumentAtom) === document &&
       store.get(translationEnabledAtom);
-    const makeKey = (engine: string, language: string): TranslationCacheKey => ({
-      mediaKey: document.mediaKey,
-      sourceKey: document.sourceKey,
-      contentSha256: document.contentHash,
-      requestSha256: hash([
-        engine,
-        language,
+    const makeKey = (engine: string, language: string): TranslationCacheKey => {
+      // The fourth tuple element is the engine's endpoint identity. Lingva
+      // keeps its historical value so previously cached translations remain
+      // valid without a schema rebuild; engines without an endpoint hash
+      // null exactly as before.
+      const endpointIdentity =
+        engine === 'lingva'
+          ? normalizeLingvaInstance(config.lingvaInstance)
+          : engine === 'libretranslate'
+            ? normalizeLibreTranslateEndpoint(config.libreTranslateEndpoint)
+            : null;
+      return {
+        mediaKey: document.mediaKey,
+        sourceKey: document.sourceKey,
+        contentSha256: document.contentHash,
+        requestSha256: hash([engine, language, targetLang, endpointIdentity]),
+        translationProvider: engine,
+        sourceLang: language,
         targetLang,
-        engine === 'lingva' ? normalizeLingvaInstance(config.lingvaInstance) : null,
-      ]),
-      translationProvider: engine,
-      sourceLang: language,
-      targetLang,
-    });
+      };
+    };
     function commit(key: TranslationCacheKey, lines: string[], cache: boolean): void {
       if (!current()) return;
       if (cache) saveTranslation(deps.db, key, lines);
@@ -160,6 +188,11 @@ export function createLyricsSession(store: Store, deps: LyricsDependencies): Lyr
       if (cached) {
         commit(key, cached, false);
         return;
+      }
+      if (provider.id === 'mymemory' && target?.track.source?.kind === 'podcast') {
+        throw new Error(
+          'MyMemory is not used for whole podcast transcripts — choose another translation provider.',
+        );
       }
       const texts = document.original.lines
         .filter((line) => line.text.trim())
@@ -309,6 +342,15 @@ export function createLyricsSession(store: Store, deps: LyricsDependencies): Lyr
         return reload();
       store.set(transcriptSourceAtom, normalized);
       return sourceJob;
+    },
+    async testTranslation(config: TuiTunesConfig, signal: AbortSignal): Promise<void> {
+      signal.throwIfAborted();
+      const provider = providerFromConfig(config);
+      const target = config.translationLanguage || 'en';
+      const source = config.translationSourceLanguage ?? 'auto';
+      if (provider.testConnection)
+        await provider.testConnection(TEST_TRANSLATION_TEXT, target, source, signal);
+      else await provider.translate(TEST_TRANSLATION_TEXT, target, source, signal);
     },
     async dispose() {
       if (disposed) return;

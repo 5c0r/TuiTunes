@@ -92,16 +92,47 @@ import { SourcePicker } from './ui/SourcePicker';
 import { TrackList } from './ui/TrackList';
 import { Transcript } from './ui/Transcript';
 import { TranscriptUrlInput } from './ui/TranscriptUrlInput';
-import { TranslationLanguageInput } from './ui/TranslationLanguageInput';
+import {
+  normalizeEndpointUrl,
+  normalizeLanguageCode,
+  TranslationSettings,
+  validateTranslationSettings,
+} from './ui/TranslationSettings';
 import { nextTheme } from './ui/themes';
 import { useTheme } from './ui/useTheme';
 import { usePresentation } from './ui/usePresentation';
-import { type IconStyle, saveConfig } from './utils/config';
+import { type IconStyle, saveConfig, type TuiTunesConfig } from './utils/config';
 import { formatTime } from './utils/format';
 import { Logger } from './utils/logger';
 import { searchTranscript } from './utils/transcript-search';
 
 const QUEUE_PREVIEW_SIZE = 5;
+
+type TranslationSettingsOverlay = Extract<Overlay, { kind: 'translation-settings' }>;
+
+/**
+ * Config exactly as the settings draft would save it. Test Connection is
+ * given this same shape, so it always checks the configuration Save persists.
+ */
+function translationConfigFromDraft(
+  draft: TranslationSettingsOverlay,
+  base: TuiTunesConfig,
+): TuiTunesConfig {
+  const next: TuiTunesConfig = {
+    ...base,
+    translationProvider: draft.provider,
+    translationLanguage: normalizeLanguageCode(draft.targetLanguage),
+    translationSourceLanguage: normalizeLanguageCode(draft.sourceLanguage),
+  };
+  if (draft.provider === 'libretranslate') {
+    next.libreTranslateEndpoint = normalizeEndpointUrl(draft.endpoint);
+  } else if (draft.provider === 'lingva') {
+    next.lingvaInstance = normalizeEndpointUrl(draft.endpoint);
+  }
+  const apiKey = draft.apiKey.trim();
+  if (apiKey.length > 0) next.deeplApiKey = apiKey;
+  return next;
+}
 
 interface AppProps {
   store: Store;
@@ -168,8 +199,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   const translationEnabled = useAtomValue(translationEnabledAtom);
   const setTranslationEnabled = useSetAtom(translationEnabledAtom);
 
-  // Config (translation language submission)
-  const config = useAtomValue(configAtom);
+  // Config (translation settings submission)
   const setConfig = useSetAtom(configAtom);
 
   // Search state
@@ -228,6 +258,16 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   const [episodePageSize, setEpisodePageSize] = useState(50);
   const clickScope = `${layout}:${section}:${section === 'music' ? musicView : podcastView}`;
   const focusTransitionRef = useRef(false);
+  // Manual translation connection test (settings overlay); see updateOverlay.
+  const translationTestRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (overlay?.kind !== 'translation-settings') {
+      translationTestRef.current?.abort();
+      translationTestRef.current = null;
+    }
+  }, [overlay]);
+  useEffect(() => () => translationTestRef.current?.abort(), []);
+
   useEffect(() => {
     focusTransitionRef.current = store.get(focusedPanelAtom) !== focusedPanel;
   }, [focusedPanel, store]);
@@ -439,6 +479,59 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       busy: false,
       error: null,
     });
+  };
+
+  // A running connection test is dropped when a draft edit, the overlay exit,
+  // or a newer test makes it stale; its ref is declared with the refs above.
+  const abortTranslationTest = (): void => {
+    translationTestRef.current?.abort();
+    translationTestRef.current = null;
+  };
+  const translationDraftChanged = (a: TranslationSettingsOverlay, b: TranslationSettingsOverlay) =>
+    a.provider !== b.provider ||
+    a.targetLanguage !== b.targetLanguage ||
+    a.sourceLanguage !== b.sourceLanguage ||
+    a.endpoint !== b.endpoint ||
+    a.apiKey !== b.apiKey;
+
+  const translationEndpoint = (
+    provider: TuiTunesConfig['translationProvider'],
+    config: TuiTunesConfig,
+  ): string => {
+    if (provider === 'libretranslate') return config.libreTranslateEndpoint ?? '';
+    if (provider === 'lingva') return config.lingvaInstance ?? '';
+    return '';
+  };
+
+  /**
+   * Overlay setter for the keyboard dispatcher and overlay components. It
+   * aborts a running translation connection test when the settings overlay is
+   * left or its draft changes. An endpoint belongs only to its provider.
+   */
+  const updateOverlay = (next: Overlay | null): void => {
+    const current = store.get(overlayAtom);
+    if (current?.kind !== 'translation-settings') {
+      setOverlay(next);
+      return;
+    }
+    if (!next || next.kind !== 'translation-settings') {
+      abortTranslationTest();
+      setOverlay(next);
+      return;
+    }
+    if (translationDraftChanged(current, next)) {
+      abortTranslationTest();
+      setOverlay({
+        ...next,
+        endpoint:
+          next.provider === current.provider
+            ? next.endpoint
+            : translationEndpoint(next.provider, store.get(configAtom)),
+        test: { state: 'idle' },
+      });
+      return;
+    }
+    setOverlay(next);
   };
 
   const toggleDisplay = (key: 'ascii' | 'reducedMotion' | 'spectrumEnabled'): void => {
@@ -673,17 +766,76 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         setOverlay(null);
         break;
       }
-      case 'translation-language': {
-        const lang = submitted.value.trim().toLowerCase();
-        if (lang.length >= 2) {
-          // Save synchronously before updating the atom.
-          const next = { ...store.get(configAtom), translationLanguage: lang };
-          saveConfig(next);
-          setConfig(next);
-          Logger.info(`Translation language set to: ${lang}`);
+      case 'translation-settings': {
+        const active = store.get(overlayAtom);
+        if (active?.kind !== 'translation-settings') return;
+        if (active.field === 'cancel') {
+          abortTranslationTest();
+          setOverlay(null);
+          return;
         }
+        const problem = validateTranslationSettings(active);
+        if (active.field === 'test') {
+          if (active.provider === 'none') {
+            setOverlay({
+              ...active,
+              test: {
+                state: 'error',
+                message: 'Pick an external provider to test',
+              },
+            });
+            return;
+          }
+          if (problem) {
+            setOverlay({ ...active, test: { state: 'error', message: problem } });
+            return;
+          }
+          abortTranslationTest();
+          const controller = new AbortController();
+          translationTestRef.current = controller;
+          setOverlay({ ...active, test: { state: 'running' }, error: null });
+          void lyrics
+            .testTranslation(
+              translationConfigFromDraft(active, store.get(configAtom)),
+              controller.signal,
+            )
+            .then(() => {
+              if (translationTestRef.current !== controller) return;
+              translationTestRef.current = null;
+              const open = store.get(overlayAtom);
+              if (open?.kind === 'translation-settings' && open.test.state === 'running') {
+                setOverlay({ ...open, test: { state: 'ok', message: 'Connection OK' } });
+              }
+            })
+            .catch((error: unknown) => {
+              if (translationTestRef.current !== controller) return;
+              translationTestRef.current = null;
+              if (controller.signal.aborted) return;
+              const open = store.get(overlayAtom);
+              if (open?.kind === 'translation-settings' && open.test.state === 'running') {
+                setOverlay({
+                  ...open,
+                  test: {
+                    state: 'error',
+                    message: error instanceof Error ? error.message : String(error),
+                  },
+                });
+              }
+            });
+          return;
+        }
+        if (problem) {
+          setOverlay({ ...active, error: problem });
+          return;
+        }
+        const next = translationConfigFromDraft(active, store.get(configAtom));
+        // Save synchronously before updating the atom.
+        saveConfig(next);
+        setConfig(next);
+        abortTranslationTest();
         setOverlay(null);
-        break;
+        Logger.info(`Translation configured: ${next.translationProvider}`);
+        return;
       }
       case 'source-picker': {
         const current = store.get(overlayAtom);
@@ -1008,7 +1160,22 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     },
     'toggle-reduced-motion': () => toggleDisplay('reducedMotion'),
     'toggle-spectrum': () => toggleDisplay('spectrumEnabled'),
-    'set-translation-language': () => setOverlay({ kind: 'translation-language', value: '' }),
+    'configure-translation': () => {
+      const current = store.get(configAtom);
+      setOverlay({
+        kind: 'translation-settings',
+        provider: current.translationProvider,
+        targetLanguage: current.translationLanguage ?? '',
+        sourceLanguage: current.translationSourceLanguage ?? '',
+        endpoint: translationEndpoint(current.translationProvider, current),
+        apiKey: '',
+        keySet: (current.deeplApiKey ?? '').length > 0,
+        field: 'provider',
+        editing: false,
+        test: { state: 'idle' },
+        error: null,
+      });
+    },
     help: () => setOverlay((prev) => (prev?.kind === 'help' ? null : { kind: 'help' })),
     quit: () => {
       if (store.get(overlayAtom)?.kind === 'quit-confirm') onQuit();
@@ -1074,7 +1241,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       },
       {
         command: executeCommand,
-        setOverlay,
+        setOverlay: updateOverlay,
         setFocus,
         navigate,
         activateSelection,
@@ -1505,12 +1672,8 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
               onInput={(value) => setOverlay({ kind: 'transcript-url', value })}
             />
           )}
-          {overlay?.kind === 'translation-language' && (
-            <TranslationLanguageInput
-              value={overlay.value}
-              currentLang={config.translationLanguage}
-              onInput={(value) => setOverlay({ kind: 'translation-language', value })}
-            />
+          {overlay?.kind === 'translation-settings' && (
+            <TranslationSettings overlay={overlay} onChange={updateOverlay} />
           )}
           {overlay?.kind === 'transcript-search' && (
             <box

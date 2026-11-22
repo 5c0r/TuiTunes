@@ -4,6 +4,7 @@ import type { LyricTimingContext } from '../application/lyric-timing';
 import type { SearchContinuation, SearchResult, Track } from '../providers/types';
 import type { LayoutPreset } from '../ui/layouts';
 import type { ThemeName } from '../ui/themes';
+import type { TuiTunesConfig } from '../utils/config';
 
 // -- Section: top-level mode (music vs podcast) --
 
@@ -24,6 +25,48 @@ export const podcastViewAtom = atom<PodcastView>('feeds');
 export type FocusedPanel = 'search' | 'sidebar' | 'main';
 export const focusedPanelAtom = atom<FocusedPanel>('main');
 
+/** Translation backend ids, mirroring TuiTunesConfig.translationProvider. */
+export type TranslationProviderId = TuiTunesConfig['translationProvider'];
+
+/** Selectable rows of the translation settings overlay, in display order. */
+export type TranslationSettingsField =
+  | 'provider'
+  | 'target'
+  | 'source'
+  | 'endpoint'
+  | 'key'
+  | 'test'
+  | 'save'
+  | 'cancel';
+
+/** Display/selection order shared by the keyboard dispatcher and the renderer. */
+export const TRANSLATION_SETTINGS_FIELDS: readonly TranslationSettingsField[] = [
+  'provider',
+  'target',
+  'source',
+  'endpoint',
+  'key',
+  'test',
+  'save',
+  'cancel',
+];
+
+/** Left/right cycling order for the provider row. */
+export const TRANSLATION_PROVIDER_ORDER: readonly TranslationProviderId[] = [
+  'none',
+  'libretranslate',
+  'lingva',
+  'mymemory',
+  'deepl',
+];
+
+/** Manual connection-test outcome shown inside the overlay. */
+export type TranslationTestStatus =
+  | { state: 'idle' }
+  | { state: 'running' }
+  | { state: 'ok'; message: string }
+  | { state: 'error'; message: string };
+
 /**
  * The single active overlay, or null when none is open. Opening a new overlay
  * replaces the old one; there is no overlay stack. Lyrics visibility and search
@@ -37,7 +80,20 @@ export type Overlay =
   | { kind: 'seek'; value: string }
   | { kind: 'transcript-url'; value: string }
   | { kind: 'transcript-search'; query: string; selectedIdx: number }
-  | { kind: 'translation-language'; value: string }
+  | {
+      kind: 'translation-settings';
+      provider: TranslationProviderId;
+      targetLanguage: string;
+      sourceLanguage: string;
+      endpoint: string;
+      apiKey: string;
+      /** Whether a DeepL key is already stored; the secret itself is never re-displayed. */
+      keySet: boolean;
+      field: TranslationSettingsField;
+      editing: boolean;
+      test: TranslationTestStatus;
+      error: string | null;
+    }
   | {
       kind: 'episode-bookmarks';
       track: Track;

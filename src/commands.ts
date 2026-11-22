@@ -302,9 +302,9 @@ export const COMMANDS = [
     category: 'view',
   },
   {
-    id: 'set-translation-language',
-    name: 'Set Translation Language',
-    description: 'Change target language for lyrics translation',
+    id: 'configure-translation',
+    name: 'Configure Translation',
+    description: 'Set provider, languages, endpoint and DeepL key for lyric translation',
     category: 'view',
   },
   {

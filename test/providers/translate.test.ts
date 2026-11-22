@@ -3,6 +3,7 @@ import {
   DEFAULT_LINGVA_INSTANCE,
   DeepLProvider,
   getTranslationProvider,
+  LibreTranslateProvider,
   LingvaProvider,
   MyMemoryProvider,
   normalizeLingvaInstance,
@@ -65,6 +66,23 @@ function deepLBody(init: RequestInit | undefined): DeepLRequestBody {
   const parsed = JSON.parse(body) as DeepLRequestBody;
   if (!Array.isArray(parsed.text)) throw new Error('DeepL request body must carry a text array');
   return parsed;
+}
+
+interface LibreTranslateRequestBody {
+  q: string[];
+  source: string;
+  target: string;
+  format: string;
+}
+
+function libreBody(init: RequestInit | undefined): LibreTranslateRequestBody {
+  const body = init?.body;
+  if (typeof body !== 'string') throw new Error('LibreTranslate request body must be a JSON string');
+  return JSON.parse(body) as LibreTranslateRequestBody;
+}
+
+function redirectResponse(location: string): Response {
+  return new Response(null, { status: 302, headers: { Location: location } });
 }
 
 beforeEach(() => {
@@ -258,17 +276,356 @@ describe('LingvaProvider', () => {
   });
 });
 
+describe('LibreTranslateProvider', () => {
+  const LANGUAGES = [
+    { code: 'en', name: 'English', targets: ['en', 'ja', 'vi'] },
+    { code: 'ja', name: 'Japanese', targets: ['en', 'ja'] },
+    { code: 'vi', name: 'Vietnamese', targets: ['en', 'vi'] },
+  ];
+
+  /** Serve /languages plus an echoing /translate and a fixed /detect. */
+  function echoingLibreHandler() {
+    handler = (url, init) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      if (url.endsWith('/translate')) {
+        const body = libreBody(init);
+        return jsonResponse({ translatedText: body.q.map((text) => `T:${text}`) });
+      }
+      return jsonResponse([{ confidence: 0.99, language: 'ja' }]);
+    };
+  }
+
+  test('checks /languages once, then posts ordered arrays to /translate', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com/');
+
+    const translated = await provider.translateBatch(['uno', 'dos', 'tres'], 'en', 'ja');
+
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://lt.example.com/languages',
+      'https://lt.example.com/translate',
+    ]);
+    expect(libreBody(calls[1]?.init)).toEqual({
+      q: ['uno', 'dos', 'tres'],
+      source: 'ja',
+      target: 'en',
+      format: 'text',
+    });
+    expect(translated).toEqual(['T:uno', 'T:dos', 'T:tres']);
+
+    // The route check is cached per provider instance.
+    await provider.translateBatch(['cuatro'], 'en', 'ja');
+    expect(calls.filter((call) => call.url.endsWith('/languages'))).toHaveLength(1);
+  });
+
+  test('an automatic connection test tries an installed source for the selected target', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await provider.testConnection('synthetic', 'en', 'auto', new AbortController().signal);
+    expect(calls.map(({ url }) => url)).toEqual([
+      'https://lt.example.com/languages',
+      'https://lt.example.com/translate',
+    ]);
+    expect(libreBody(calls[1]?.init)).toMatchObject({ source: 'ja', target: 'en', q: ['synthetic'] });
+  });
+
+  test('reports an unreachable server without revealing transport details', async () => {
+    handler = () => { throw new Error('private endpoint details'); };
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translate('text', 'en', 'ja')).rejects.toThrow(
+      'Cannot reach LibreTranslate; check your network and configured endpoint',
+    );
+  });
+
+  test('keeps the per-request deadline active while the response body is stalled', async () => {
+    const originalTimeout = AbortSignal.timeout;
+    const deadline = new AbortController();
+    const reading = Promise.withResolvers<void>();
+    AbortSignal.timeout = () => deadline.signal;
+    try {
+      handler = (url, init) => {
+        if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+        return new Response(new ReadableStream({
+          start(controller) {
+            init?.signal?.addEventListener(
+              'abort', () => controller.error(init.signal?.reason), { once: true },
+            );
+            reading.resolve();
+          },
+        }));
+      };
+      const provider = new LibreTranslateProvider('https://lt.example.com');
+      const result = provider.translate('text', 'en', 'ja');
+      await reading.promise;
+      deadline.abort(new DOMException('deadline', 'TimeoutError'));
+      await expect(result).rejects.toThrow('LibreTranslate /translate timed out');
+    } finally {
+      AbortSignal.timeout = originalTimeout;
+    }
+  });
+
+  test('detects the source language exactly once per document when it is not explicit', async () => {
+    const samples: string[] = [];
+    handler = (url, init) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      if (url.endsWith('/detect')) {
+        samples.push(JSON.parse(String(init?.body)).q);
+        return jsonResponse([{ confidence: 0.99, language: 'ja' }]);
+      }
+      return jsonResponse({ translatedText: libreBody(init).q.map(() => 'ok') });
+    };
+
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await provider.translateBatch(['one line', 'two line'], 'en');
+
+    expect(samples).toEqual(['one line two line']);
+    expect(libreBody(calls[2]?.init).source).toBe('ja');
+
+    // A new document re-detects; the /languages route check does not repeat.
+    await provider.translateBatch(['other'], 'en');
+    expect(samples).toEqual(['one line two line', 'other']);
+    expect(calls.filter((call) => call.url.endsWith('/languages'))).toHaveLength(1);
+  });
+
+  test('an explicit source language skips detection entirely', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await provider.translateBatch(['a'], 'en', 'vi');
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://lt.example.com/languages',
+      'https://lt.example.com/translate',
+    ]);
+    expect(libreBody(calls[1]?.init).source).toBe('vi');
+  });
+
+  test('detection samples at most 4096 UTF-8 bytes of the document', async () => {
+    const samples: string[] = [];
+    handler = (url, init) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      if (url.endsWith('/detect')) {
+        samples.push(JSON.parse(String(init?.body)).q);
+        return jsonResponse([{ confidence: 1, language: 'ja' }]);
+      }
+      return jsonResponse({ translatedText: libreBody(init).q.map(() => 'ok') });
+    };
+    const fits = 'a'.repeat(3000);
+    const tooBig = 'b'.repeat(3000);
+
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await provider.translateBatch([fits, tooBig, 'c'], 'en');
+
+    expect(samples).toEqual([`${fits} c`]);
+    expect(new TextEncoder().encode(samples[0]).length).toBeLessThanOrEqual(4096);
+  });
+
+  test('prefix-truncates a single long nonempty line instead of skipping detection', async () => {
+    const samples: string[] = [];
+    handler = (url, init) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      if (url.endsWith('/detect')) {
+        samples.push(JSON.parse(String(init?.body)).q);
+        return jsonResponse([{ confidence: 1, language: 'ja' }]);
+      }
+      return jsonResponse({ translatedText: ['ok'] });
+    };
+
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await provider.translateBatch(['x'.repeat(5000)], 'en');
+    await provider.translateBatch(['あ'.repeat(1500)], 'en'); // 4500 UTF-8 bytes
+
+    expect(samples[0]).toBe('x'.repeat(4096));
+    expect(new TextEncoder().encode(samples[1]).length).toBeLessThanOrEqual(4096);
+    expect(samples[1]).not.toContain('\uFFFD');
+    // 4095 bytes = 1365 complete three-byte characters, none split.
+    expect(Array.from(samples[1])).toHaveLength(1365);
+  });
+
+  test('a detection failure rejects the translation without server-side auto fallback', async () => {
+    handler = (url) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      if (url.endsWith('/detect')) return jsonResponse({}, 500);
+      return jsonResponse({ translatedText: ['must not be reached'] });
+    };
+
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['a'], 'en')).rejects.toThrow('LibreTranslate HTTP 500');
+    expect(calls.filter((call) => call.url.endsWith('/translate'))).toHaveLength(0);
+  });
+
+  test('rejects language pairs the /languages listing does not support', async () => {
+    handler = (url, init) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      if (url.endsWith('/detect')) return jsonResponse([{ confidence: 1, language: 'zh' }]);
+      return jsonResponse({ translatedText: libreBody(init).q.map(() => 'nope') });
+    };
+
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['a'], 'ja', 'vi')).rejects.toThrow(
+      'LibreTranslate does not support translating vi → ja',
+    );
+    // A detected language missing from the listing rejects the same way.
+    await expect(provider.translateBatch(['a'], 'ja')).rejects.toThrow(
+      'LibreTranslate does not support translating zh → ja',
+    );
+    expect(calls.filter((call) => call.url.endsWith('/translate'))).toHaveLength(0);
+  });
+
+  test('an all-empty document returns without detection or translation', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    expect(await provider.translateBatch(['', ''], 'en')).toEqual(['', '']);
+    expect(calls.map((call) => call.url)).toEqual(['https://lt.example.com/languages']);
+  });
+
+  test('rejects when the endpoint does not serve a usable /languages route', async () => {
+    handler = () => jsonResponse({}, 404);
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['a'], 'en', 'ja')).rejects.toThrow(
+      /check the endpoint URL and language pair/,
+    );
+    expect(calls).toHaveLength(1);
+
+    handler = () => jsonResponse({ code: 'en' });
+    await expect(provider.translateBatch(['a'], 'en', 'ja')).rejects.toThrow(
+      'LibreTranslate /languages returned a malformed payload',
+    );
+
+    handler = () => jsonResponse([]);
+    await expect(provider.translateBatch(['a'], 'en', 'ja')).rejects.toThrow(
+      'LibreTranslate /languages returned a malformed payload',
+    );
+  });
+
+  test('distinguishes auth, rate-limit, and unsupported-request failures', async () => {
+    for (const [status, pattern] of [
+      [401, /may require an API key/],
+      [403, /may require an API key/],
+      [429, /rate limit reached/],
+      [400, /language pair/],
+      [500, /^LibreTranslate HTTP 500$/],
+    ] as const) {
+      handler = (url) =>
+        url.endsWith('/languages') ? jsonResponse(LANGUAGES) : jsonResponse({}, status);
+      const provider = new LibreTranslateProvider('https://lt.example.com');
+      await expect(provider.translateBatch(['a'], 'en', 'ja')).rejects.toThrow(pattern);
+    }
+  });
+
+  test('refuses every HTTP redirect without following or logging the target', async () => {
+    for (const location of ['https://evil.example.com/translate', '/v2/translate']) {
+      handler = (url) =>
+        url.endsWith('/languages') ? jsonResponse(LANGUAGES) : redirectResponse(location);
+
+      const provider = new LibreTranslateProvider('https://lt.example.com');
+      await expect(provider.translateBatch(['secret line'], 'en', 'ja')).rejects.toThrow(
+        'LibreTranslate refused an HTTP redirect — configure the final endpoint URL directly',
+      );
+      // The redirect was seen but never followed: only the configured
+      // endpoint's own routes were contacted.
+      expect(calls.map((call) => call.url)).toEqual([
+        'https://lt.example.com/languages',
+        'https://lt.example.com/translate',
+      ]);
+      calls.length = 0;
+    }
+  });
+
+  test('rejects blank translations of nonempty inputs', async () => {
+    handler = (url) =>
+      url.endsWith('/languages')
+        ? jsonResponse(LANGUAGES)
+        : jsonResponse({ translatedText: ['', 'ok'] });
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['a', 'b'], 'en', 'ja')).rejects.toThrow(
+      'LibreTranslate returned a malformed translation payload',
+    );
+  });
+
+  test('splits 51 texts into ordered 50+1 batches', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    const texts = Array.from({ length: 51 }, (_, index) => `line-${index}`);
+    const translated = await provider.translateBatch(texts, 'en', 'ja');
+
+    const translateCalls = calls.filter((call) => call.url.endsWith('/translate'));
+    expect(translateCalls).toHaveLength(2);
+    expect(libreBody(translateCalls[0]?.init).q).toHaveLength(50);
+    expect(libreBody(translateCalls[1]?.init).q).toEqual(['line-50']);
+    expect(translated).toEqual(texts.map((text) => `T:${text}`));
+  });
+
+  test('a single text over the body budget rejects explicitly without a translate request', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['x'.repeat(200_000)], 'en')).rejects.toThrow(
+      /exceeds 131072 bytes/,
+    );
+    expect(calls.filter((call) => call.url.endsWith('/translate'))).toHaveLength(0);
+  });
+
+  test('rejects payload cardinality mismatches and non-array results', async () => {
+    handler = (url) =>
+      url.endsWith('/languages')
+        ? jsonResponse(LANGUAGES)
+        : jsonResponse({ translatedText: ['only one'] });
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['a', 'b'], 'en', 'ja')).rejects.toThrow(
+      'LibreTranslate returned a malformed translation payload',
+    );
+
+    handler = () => jsonResponse({ translatedText: 'single' });
+    await expect(provider.translateBatch(['a'], 'en', 'ja')).rejects.toThrow(
+      'LibreTranslate returned a malformed translation payload',
+    );
+  });
+
+  test('an already-aborted signal starts no requests at all', async () => {
+    echoingLibreHandler();
+    const controller = new AbortController();
+    controller.abort();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    await expect(provider.translateBatch(['a', 'b'], 'en', 'ja', controller.signal)).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+
+  test('aborting between batches stops scheduling new requests', async () => {
+    const controller = new AbortController();
+    handler = (url, init) => {
+      if (url.endsWith('/languages')) return jsonResponse(LANGUAGES);
+      controller.abort();
+      const body = libreBody(init);
+      return jsonResponse({ translatedText: body.q.map((text) => `T:${text}`) });
+    };
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    const texts = Array.from({ length: 51 }, (_, index) => `line-${index}`);
+    await expect(provider.translateBatch(texts, 'en', 'ja', controller.signal)).rejects.toThrow();
+    expect(calls.filter((call) => call.url.endsWith('/translate'))).toHaveLength(1);
+  });
+
+  test('empty text and empty batches never touch the network', async () => {
+    echoingLibreHandler();
+    const provider = new LibreTranslateProvider('https://lt.example.com');
+    expect(await provider.translateBatch([], 'en')).toEqual([]);
+    expect(await provider.translate('', 'en', 'ja')).toBe('');
+    expect(await provider.translate('hello', 'en', 'ja')).toBe('T:hello');
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://lt.example.com/languages',
+      'https://lt.example.com/translate',
+    ]);
+  });
+});
+
 describe('MyMemoryProvider', () => {
-  test('translates lines independently in order, defaulting the source language to en', async () => {
+  test('translates lines independently in order with the supplied source language', async () => {
     handler = (url) => jsonResponse({ responseData: { translatedText: `E:${myMemoryText(url)}` } });
 
     const provider = new MyMemoryProvider();
-    const translated = await provider.translateBatch(['uno', 'dos'], 'es');
+    const translated = await provider.translateBatch(['uno', 'dos'], 'es', 'it');
 
     expect(translated).toEqual(['E:uno', 'E:dos']);
     expect(calls.map((call) => new URL(call.url).searchParams.get('langpair'))).toEqual([
-      'en|es',
-      'en|es',
+      'it|es',
+      'it|es',
     ]);
   });
 
@@ -281,6 +638,21 @@ describe('MyMemoryProvider', () => {
     expect(new URL(calls[0]?.url ?? '').searchParams.get('langpair')).toBe('it|es');
   });
 
+  test('rejects an unknown source language instead of guessing one', async () => {
+    handler = () => jsonResponse({ responseData: { translatedText: 'ok' } });
+    const provider = new MyMemoryProvider();
+    await expect(provider.translate('uno', 'es', 'auto')).rejects.toThrow(
+      'MyMemory requires an explicit source language',
+    );
+    await expect(provider.translate('uno', 'es', '')).rejects.toThrow(
+      'MyMemory requires an explicit source language',
+    );
+    await expect(provider.translate('uno', 'es')).rejects.toThrow(
+      'MyMemory requires an explicit source language',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
   test('empty input returns an empty array without a network call', async () => {
     const provider = new MyMemoryProvider();
     expect(await provider.translateBatch([], 'es')).toEqual([]);
@@ -290,7 +662,7 @@ describe('MyMemoryProvider', () => {
   test('rejects malformed payloads', async () => {
     handler = () => jsonResponse({ responseData: { translatedText: 7 } });
     const provider = new MyMemoryProvider();
-    await expect(provider.translate('uno', 'es')).rejects.toThrow(
+    await expect(provider.translate('uno', 'es', 'it')).rejects.toThrow(
       'MyMemory returned a malformed translation payload',
     );
   });
@@ -298,7 +670,67 @@ describe('MyMemoryProvider', () => {
   test('rejects on HTTP failure', async () => {
     handler = () => jsonResponse({}, 503);
     const provider = new MyMemoryProvider();
-    await expect(provider.translate('uno', 'es')).rejects.toThrow('MyMemory HTTP 503');
+    await expect(provider.translate('uno', 'es', 'it')).rejects.toThrow('MyMemory HTTP 503');
+  });
+
+  test('rejects HTTP 200 application errors instead of returning their text', async () => {
+    handler = () =>
+      jsonResponse({
+        responseStatus: '400',
+        responseDetails: 'INVALID LANGUAGE PAIR',
+        responseData: { translatedText: 'NOT A TRANSLATION' },
+      });
+    await expect(new MyMemoryProvider().translate('uno', 'es', 'it')).rejects.toThrow(
+      'MyMemory rejected the translation (status 400)',
+    );
+  });
+
+  test('an HTTP 200 quota error cancels active requests and prevents new ones', async () => {
+    const quota = Promise.withResolvers<Response>();
+    handler = (url, init) => {
+      if (myMemoryText(url) === 'quota') return quota.promise;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    };
+    const blocked = new MyMemoryProvider().translateBatch(
+      ['quota', 'a', 'b', 'c', 'never'],
+      'es',
+      'it',
+    );
+    await waitForCalls(4);
+    quota.resolve(
+      jsonResponse({
+        responseStatus: 403,
+        responseDetails: 'YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY.',
+        responseData: { translatedText: 'QUOTA WARNING' },
+      }),
+    );
+    await expect(blocked).rejects.toThrow('MyMemory translation quota exhausted');
+    expect(calls.map((call) => myMemoryText(call.url))).toEqual(['quota', 'a', 'b', 'c']);
+    expect(calls.slice(1).every((call) => call.init?.signal?.aborted)).toBe(true);
+  });
+});
+
+describe('MyMemoryProvider byte budget', () => {
+  test('accepts queries of at most 500 UTF-8 bytes', async () => {
+    handler = () => jsonResponse({ responseData: { translatedText: 'ok' } });
+    const provider = new MyMemoryProvider();
+    await provider.translate('a'.repeat(500), 'en', 'es');
+    await provider.translate('あ'.repeat(166), 'en', 'ja'); // 498 bytes
+    expect(calls).toHaveLength(2);
+  });
+
+  test('splits oversized lines at code point boundaries and preserves order', async () => {
+    handler = (url) => jsonResponse({ responseData: { translatedText: myMemoryText(url) } });
+    const provider = new MyMemoryProvider();
+    const first = 'あ'.repeat(166);
+    const second = '🎶 and some more lyrics';
+    const translated = await provider.translateBatch([first + second, '', 'last'], 'en', 'ja');
+    expect(translated).toEqual([`${first} ${second}`, '', 'last']);
+    const chunks = calls.map(({ url }) => myMemoryText(url)).filter((text) => text !== 'last');
+    expect(chunks).toEqual([first, second]);
+    expect(chunks.every((text) => Buffer.byteLength(text, 'utf8') <= 500)).toBe(true);
   });
 });
 
@@ -426,24 +858,67 @@ describe('DeepLProvider', () => {
     expect(await provider.translateBatch([], 'en')).toEqual([]);
     expect(calls).toHaveLength(0);
   });
+  test('selects the API endpoint from the key shape', async () => {
+    echoingHandler();
+    await new DeepLProvider('free-key:fx').translate('a', 'en');
+    expect(calls[0]?.url).toBe('https://api-free.deepl.com/v2/translate');
+    await new DeepLProvider('pro-key').translate('a', 'en');
+    expect(calls[1]?.url).toBe('https://api.deepl.com/v2/translate');
+  });
+
+  test('refuses HTTP redirects instead of re-sending the authorized request', async () => {
+    handler = () => redirectResponse('https://evil.example.com/v2/translate');
+    const provider = new DeepLProvider('key:fx');
+    await expect(provider.translateBatch(['a'], 'en')).rejects.toThrow(
+      'DeepL refused an HTTP redirect — configure the final endpoint URL directly',
+    );
+    expect(calls).toHaveLength(1);
+  });
+
 });
 
 describe('getTranslationProvider', () => {
-  test('falls back to Lingva when DeepL is selected without an API key', () => {
-    const provider = getTranslationProvider('deepl', {});
-    expect(provider.id).toBe('lingva');
-    expect(provider).toBeInstanceOf(LingvaProvider);
-  });
-
-  test('returns DeepL when an API key is configured', () => {
-    const provider = getTranslationProvider('deepl', { deeplApiKey: 'key' });
-    expect(provider.id).toBe('deepl');
-    expect(provider).toBeInstanceOf(DeepLProvider);
-  });
-
-  test('returns MyMemory for its id and Lingva for unknown ids', () => {
+  test('resolves configured providers to their concrete implementations', () => {
+    expect(getTranslationProvider('deepl', { deeplApiKey: 'key' })).toBeInstanceOf(DeepLProvider);
     expect(getTranslationProvider('mymemory')).toBeInstanceOf(MyMemoryProvider);
-    expect(getTranslationProvider('nonexistent')).toBeInstanceOf(LingvaProvider);
+    expect(
+      getTranslationProvider('libretranslate', {
+        libreTranslateEndpoint: 'https://lt.example.com',
+      }),
+    ).toBeInstanceOf(LibreTranslateProvider);
+    expect(
+      getTranslationProvider('lingva', { lingvaInstance: 'https://lingva.example.com' }),
+    ).toBeInstanceOf(LingvaProvider);
+  });
+
+  test('providers without their required configuration resolve to the no-op provider', async () => {
+    const unconfigured = [
+      getTranslationProvider('none'),
+      getTranslationProvider('nonexistent'),
+      getTranslationProvider('deepl', {}),
+      getTranslationProvider('lingva', {}),
+      getTranslationProvider('lingva', { lingvaInstance: '   ' }),
+      getTranslationProvider('libretranslate', {}),
+    ];
+    for (const provider of unconfigured) expect(provider.id).toBe('none');
+
+    // Empty batches resolve without a network call; anything else rejects
+    // with the actionable reason.
+    expect(await unconfigured[0].translateBatch([], 'en')).toEqual([]);
+    expect(calls).toHaveLength(0);
+    await expect(unconfigured[0].translate('a', 'en')).rejects.toThrow(
+      'No external translation provider is configured.',
+    );
+    await expect(getTranslationProvider('deepl', {}).translateBatch(['a'], 'en')).rejects.toThrow(
+      'DeepL requires an API key.',
+    );
+    await expect(
+      getTranslationProvider('lingva', {}).translateBatch(['a'], 'en'),
+    ).rejects.toThrow('Lingva requires a custom instance URL.');
+    await expect(
+      getTranslationProvider('libretranslate', {}).translateBatch(['a'], 'en'),
+    ).rejects.toThrow('LibreTranslate requires a self-hosted endpoint URL.');
+    expect(calls).toHaveLength(0);
   });
 
   test('wires the configured Lingva instance into requests', async () => {
@@ -455,5 +930,23 @@ describe('getTranslationProvider', () => {
     await provider.translate('hello', 'en');
 
     expect(calls[0]?.url).toBe('https://my-lingva.example.com/api/v1/auto/en/hello');
+  });
+
+  test('wires the configured LibreTranslate endpoint into requests', async () => {
+    handler = (url) =>
+      url.endsWith('/languages')
+        ? jsonResponse([
+            { code: 'en', name: 'English', targets: ['en', 'ja'] },
+            { code: 'ja', name: 'Japanese', targets: ['en', 'ja'] },
+          ])
+        : jsonResponse({ translatedText: ['ok'] });
+
+    const provider = getTranslationProvider('libretranslate', {
+      libreTranslateEndpoint: 'https://lt.example.com/',
+    });
+    await provider.translate('hello', 'en', 'ja');
+
+    expect(calls[0]?.url).toBe('https://lt.example.com/languages');
+    expect(calls[1]?.url).toBe('https://lt.example.com/translate');
   });
 });

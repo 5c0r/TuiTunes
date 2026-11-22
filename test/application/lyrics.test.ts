@@ -1,17 +1,20 @@
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { createStore } from 'jotai';
 import { createLyricsSession, type LyricsDependencies } from '../../src/application/lyrics';
 import { runMigrations } from '../../src/db/index';
 import type { LyricLine, LyricsResult } from '../../src/providers/lyrics';
 import { mediaKey } from '../../src/providers/media';
-import type { TranslationProvider } from '../../src/providers/translate';
+import { getTranslationProvider, type TranslationProvider } from '../../src/providers/translate';
 import type { PlaybackTarget, Track } from '../../src/providers/types';
 import { configAtom } from '../../src/store/config';
+import { DEFAULT_CONFIG, type TuiTunesConfig } from '../../src/utils/config';
 import {
   lyricsDataAtom,
   lyricsDocumentAtom,
   lyricsErrorAtom,
+  lyricsTranslationAtom,
   translationEnabledAtom,
   translationLoadingAtom,
 } from '../../src/store/lyrics';
@@ -433,6 +436,329 @@ test('native caption translation receives the abortable translation signal', asy
     expect(received[0]?.aborted).toBe(true);
   } finally {
     native.resolve(null);
+    await close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Translation-provider contract: none provider, explicit source, MyMemory
+// guards, LibreTranslate endpoints, cache identity, probe, abort sibling
+// ---------------------------------------------------------------------------
+
+test('an unconfigured provider surfaces its application error and retains originals', async () => {
+  const { db, store, session, close } = setup({ translationProvider: getTranslationProvider });
+  try {
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+
+    expect(store.get(lyricsErrorAtom)).toContain('Use Configure Translation.');
+    expect(store.get(lyricsDataAtom)?.lines[0]).toEqual({ time: 1, text: 'A' });
+    expect(store.get(translationLoadingAtom)).toBe(false);
+    expect(db.query('SELECT * FROM translations').all()).toEqual([]);
+  } finally {
+    await close();
+  }
+});
+
+test('an explicit source language is passed through and isolated in the cache', async () => {
+  const sources: string[] = [];
+  const { db, store, session, close } = setup({
+    translationProvider: () => ({
+      id: 'lingva',
+      name: 'Fixture',
+      translate: async (text) => text,
+      translateBatch: async (_texts, _target, source) => {
+        sources.push(source ?? 'undefined');
+        return ['T:A', 'T:A2'];
+      },
+    }),
+  });
+  try {
+    store.set(configAtom, (config) => ({ ...config, translationSourceLanguage: 'ja' }));
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    expect(sources).toEqual(['ja']);
+    expect(db.query('SELECT source_lang FROM translations').get()).toEqual({ source_lang: 'ja' });
+
+    // A different explicit source cannot reuse the cached translation.
+    store.set(configAtom, (config) => ({ ...config, translationSourceLanguage: 'ko' }));
+    await drain();
+    expect(sources).toEqual(['ja', 'ko']);
+  } finally {
+    await close();
+  }
+});
+
+test('MyMemory never receives whole podcast documents', async () => {
+  let calls = 0;
+  const { store, session, close } = setup({
+    translationProvider: () => ({
+      id: 'mymemory',
+      name: 'Fixture',
+      translate: async (text) => text,
+      translateBatch: async () => {
+        calls++;
+        return [];
+      },
+    }),
+  });
+  try {
+    const episode = {
+      id: 'ep',
+      podcastId: 'feed',
+      podcastTitle: 'Podcast',
+      title: 'Episode',
+      audioUrl: 'https://audio.test/ep',
+      duration: 1,
+      publishDate: '2026-01-01',
+    };
+    store.set(playerPlaybackAtom, {
+      track: { ...track('ep'), provider: 'podcast', source: { kind: 'podcast', episode } },
+      source: {
+        kind: 'rss',
+        url: episode.audioUrl,
+        transcriptUrl: 'https://rss.test/transcript',
+        selection: 'auto',
+      },
+      requestId: 1,
+      origin: { kind: 'direct' },
+    });
+    await session.reload();
+    await drain();
+
+    expect(calls).toBe(0);
+    expect(store.get(lyricsErrorAtom)).toBe(
+      'MyMemory is not used for whole podcast transcripts — choose another translation provider.',
+    );
+    expect(store.get(lyricsDataAtom)?.lines[0]?.text).toBe('URL');
+  } finally {
+    await close();
+  }
+});
+
+test('MyMemory still translates music lyrics with an explicit source', async () => {
+  let calls = 0;
+  const { store, session, close } = setup({
+    translationProvider: () => ({
+      id: 'mymemory',
+      name: 'Fixture',
+      translate: async (text) => text,
+      translateBatch: async (texts) => {
+        calls++;
+        return texts.map((text) => `T:${text}`);
+      },
+    }),
+  });
+  try {
+    store.set(configAtom, (config) => ({ ...config, translationSourceLanguage: 'en' }));
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    expect(calls).toBe(1);
+    expect(store.get(lyricsErrorAtom)).toBeNull();
+  } finally {
+    await close();
+  }
+});
+
+test('MyMemory with an unknown source language keeps the original instead of guessing', async () => {
+  const { store, session, close } = setup({ translationProvider: getTranslationProvider });
+  try {
+    store.set(configAtom, (config) => ({ ...config, translationProvider: 'mymemory' }));
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    expect(store.get(lyricsErrorAtom)).toBe('MyMemory requires an explicit source language');
+    expect(store.get(lyricsDataAtom)?.lines[0]).toEqual({ time: 1, text: 'A' });
+  } finally {
+    await close();
+  }
+});
+
+test('testTranslation probes synthetic text through the configured provider only', async () => {
+  const factoryArguments: Array<{ id: string; endpoint?: string }> = [];
+  const received: Array<{ text: string; target: string; source: string | undefined }> = [];
+  const { db, store, session, close } = setup({
+    translationProvider: (id, options) => {
+      factoryArguments.push({ id, endpoint: options?.libreTranslateEndpoint });
+      return {
+        id,
+        name: 'Probe',
+        translate: async (text, targetLang, sourceLang) => {
+          received.push({ text, target: targetLang, source: sourceLang });
+          return 'probed';
+        },
+        translateBatch: async (texts) => texts.map((text) => text),
+      };
+    },
+  });
+  try {
+    const config: TuiTunesConfig = {
+      ...DEFAULT_CONFIG,
+      translationProvider: 'libretranslate',
+      libreTranslateEndpoint: 'http://127.0.0.1:15097',
+      translationLanguage: 'ja',
+      translationSourceLanguage: 'en',
+    };
+    await session.testTranslation(config, new AbortController().signal);
+
+    expect(factoryArguments).toEqual([
+      { id: 'libretranslate', endpoint: 'http://127.0.0.1:15097' },
+    ]);
+    expect(received).toEqual([{ text: 'Hello', target: 'ja', source: 'en' }]);
+    expect(store.get(lyricsErrorAtom)).toBeNull();
+    expect(store.get(lyricsDocumentAtom)).toBeNull();
+    expect(db.query('SELECT * FROM translations').all()).toEqual([]);
+
+    // A live playback document never feeds the probe.
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    const probes = received.length;
+    await session.testTranslation(
+      { ...config, translationSourceLanguage: null },
+      new AbortController().signal,
+    );
+    expect(received[probes]).toEqual({ text: 'Hello', target: 'ja', source: 'auto' });
+    expect(store.get(lyricsDataAtom)?.lines[0]?.text).toBe('A');
+  } finally {
+    await close();
+  }
+});
+
+test('testTranslation rejects with the provider failure and honors aborts', async () => {
+  const { session, close } = setup({
+    translationProvider: () => ({
+      id: 'libretranslate',
+      name: 'Probe',
+      translate: async () => {
+        throw new Error('endpoint down');
+      },
+      translateBatch: async () => {
+        throw new Error('endpoint down');
+      },
+    }),
+  });
+  try {
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      session.testTranslation(
+        { ...DEFAULT_CONFIG, translationProvider: 'libretranslate' },
+        aborted.signal,
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      session.testTranslation(
+        { ...DEFAULT_CONFIG, translationProvider: 'libretranslate' },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('endpoint down');
+  } finally {
+    await close();
+  }
+});
+
+test('LibreTranslate endpoints are isolated in the translation cache', async () => {
+  let calls = 0;
+  const { store, session, close } = setup({
+    translationProvider: () => ({
+      id: 'libretranslate',
+      name: 'Fixture',
+      translate: async (text) => text,
+      translateBatch: async (texts) => {
+        calls++;
+        return texts.map((text) => `T:${text}`);
+      },
+    }),
+  });
+  try {
+    store.set(configAtom, (config) => ({
+      ...config,
+      translationProvider: 'libretranslate',
+      libreTranslateEndpoint: 'http://one.test',
+    }));
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    expect(calls).toBe(1);
+    expect(store.get(lyricsDataAtom)?.lines[0]?.translatedText).toBe('T:A');
+
+    // The same document under another endpoint cannot reuse cached rows.
+    store.set(configAtom, (config) => ({ ...config, libreTranslateEndpoint: 'http://two.test' }));
+    await drain();
+    expect(calls).toBe(2);
+  } finally {
+    await close();
+  }
+});
+
+test('the historical Lingva cache identity still hits without a new request', async () => {
+  let calls = 0;
+  const { db, store, session, close } = setup({
+    translationProvider: () => ({
+      id: 'lingva',
+      name: 'Fixture',
+      translate: async (text) => text,
+      translateBatch: async (texts) => {
+        calls++;
+        return texts.map((text) => `T:${text}`);
+      },
+    }),
+  });
+  try {
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    expect(calls).toBe(1);
+
+    // The stored request hash must equal the pre-LibreTranslate tuple
+    // [engine, source, target, normalized instance] byte for byte.
+    const historical = createHash('sha256')
+      .update(JSON.stringify(['lingva', 'auto', 'en', 'https://lingva.ml']))
+      .digest('hex');
+    expect(db.query('SELECT request_sha256, translation_provider FROM translations').get()).toEqual(
+      { request_sha256: historical, translation_provider: 'lingva' },
+    );
+
+    await session.reload();
+    await drain();
+    expect(calls).toBe(1); // served from the old-format cache row
+    expect(store.get(lyricsDataAtom)?.lines[0]?.translatedText).toBe('T:A');
+  } finally {
+    await close();
+  }
+});
+
+test('aborting an in-flight translation is not an error', async () => {
+  const work = Promise.withResolvers<string[]>();
+  const { store, session, close } = setup({
+    translationProvider: () => ({
+      id: 'lingva',
+      name: 'Deferred',
+      translate: async (text) => text,
+      translateBatch: () => work.promise,
+    }),
+  });
+  try {
+    store.set(playerPlaybackAtom, target('A', 1));
+    await session.reload();
+    await drain();
+    expect(store.get(translationLoadingAtom)).toBe(true);
+
+    store.set(translationEnabledAtom, false);
+    expect(store.get(translationLoadingAtom)).toBe(false);
+    expect(store.get(lyricsTranslationAtom)).toBeNull();
+
+    work.reject(new Error('cancelled sibling'));
+    await drain();
+    expect(store.get(lyricsErrorAtom)).toBeNull();
+    expect(store.get(lyricsDataAtom)?.translatedTo).toBeUndefined();
+    expect(store.get(lyricsDataAtom)?.lines[0]).toEqual({ time: 1, text: 'A' });
+  } finally {
     await close();
   }
 });

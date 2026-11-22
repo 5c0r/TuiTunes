@@ -282,16 +282,24 @@ describe('translation cache', () => {
 });
 
 describe('translation provider fallback behavior', () => {
-  test('getTranslationProvider resolves DeepL without a key to Lingva and keeps DeepL with one', () => {
-    const fallback = getTranslationProvider('deepl', {});
-    expect(fallback.id).toBe('lingva');
-
-    const deepl = getTranslationProvider('deepl', { deeplApiKey: 'key' });
-    expect(deepl.id).toBe('deepl');
+  test('providers without their required configuration resolve to the no-op provider', () => {
+    expect(getTranslationProvider('none').id).toBe('none');
+    expect(getTranslationProvider('nonexistent').id).toBe('none');
+    expect(getTranslationProvider('deepl', {}).id).toBe('none');
+    expect(getTranslationProvider('lingva', {}).id).toBe('none');
+    expect(getTranslationProvider('libretranslate', {}).id).toBe('none');
   });
 
-  test('unknown provider ids resolve to Lingva and MyMemory stays distinct', () => {
-    expect(getTranslationProvider('nonexistent').id).toBe('lingva');
+  test('configured providers resolve to their concrete implementations', () => {
+    expect(getTranslationProvider('deepl', { deeplApiKey: 'key' }).id).toBe('deepl');
     expect(getTranslationProvider('mymemory').id).toBe('mymemory');
+    expect(getTranslationProvider('lingva', { lingvaInstance: 'https://l.example.com' }).id).toBe(
+      'lingva',
+    );
+    expect(
+      getTranslationProvider('libretranslate', {
+        libreTranslateEndpoint: 'https://lt.example.com',
+      }).id,
+    ).toBe('libretranslate');
   });
 });

@@ -101,6 +101,7 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | `src/providers/types.ts` | IProvider, Track, SearchResult, Playlist interfaces |
 | `src/providers/youtube.ts` | YouTube Music search via youtubei.js + yt-dlp stream URLs |
 | `src/providers/lyrics.ts` | LRCLIB synced lyrics (primary) + YouTube Music fallback (plain text) |
+| `src/providers/translate.ts` | Explicit translation providers, bounded request batching, and connection validation |
 | `src/providers/podcast.ts` | PodcastProvider: iTunes search + RSS feed parsing |
 | `src/providers/podcast-types.ts` | Podcast, Episode interfaces |
 | `src/providers/podcast-youtube.ts` | Find YouTube video for podcast episode, extract captions |
@@ -139,6 +140,7 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | `src/ui/LyricTiming.tsx` | Signed live timing preview and undo/save controls rendered under the single keyboard dispatcher |
 | `src/ui/useLyricFollow.ts` | Layout-based follow positioning and native scroll suspension for synced music |
 | `src/ui/TranscriptUrlInput.tsx` | Custom transcript URL input |
+| `src/ui/TranslationSettings.tsx` | Provider and language configuration with an explicit synthetic connection test |
 | `src/ui/HelpOverlay.tsx` | Keybinding reference |
 | `src/ui/layouts.ts` | 7 presets: default, compact, minimal, split, wide, focus, vertical |
 | `src/ui/themes.ts` | 8 color themes + Theme interface |
@@ -297,6 +299,7 @@ Before any feature change, check these:
 | DB queries | Favorites CRUD, history, in-memory SQLite | test/db/queries.test.ts |
 | App search | Fresh and continuation stale results/loading | test/ui/app-search.test.tsx |
 | Request owners | Playback/lyrics/search races and cancellation | test/application/{playback,lyrics,search}.test.ts |
+| Translation settings | Real App keyboard overlay, saved provider configuration, stale connection-test handling | test/ui/translation-settings.test.tsx |
 | Keyboard | Real App input/overlay exclusivity | test/ui/app-keyboard.test.tsx |
 | Mouse | Real renderer hit tests, search focus, identity-based rows, queue panes, wheel and modal isolation | test/ui/app-mouse.test.tsx |
 | Media persistence | Feed identity, legacy migrations, source codecs | test/db/media.test.ts |
