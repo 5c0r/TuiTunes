@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/5c0r/TuiTunes/compare/v1.0.0...v1.1.0) (2026-11-22)
+
+
+### Features
+
+* add mouse controls and restore listening state ([b676e88](https://github.com/5c0r/TuiTunes/commit/b676e884b8dae452a165724eb19de846a7d4ec5b))
+
 ## Unreleased
 
 - Resume podcast episodes and save, jump to, rename, or delete bookmarks tied to the actual audio source.
