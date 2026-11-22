@@ -13,6 +13,7 @@
 - Navigate tabs, sidebar, results, catalogs, and queues with the mouse. Select with a click, open or play with a double-click; dialogs block background input.
 - Use clickable playback buttons and seek on the progress bar when the current audio supports it.
 - Default to Nerd Font icons; opt into standard Unicode or override with ASCII chrome.
+- Offer opt-in local LibreTranslate and explicit translation settings; stop silently falling back to the stock Lingva service.
 
 # 1.0.0 (2026-11-21)
 

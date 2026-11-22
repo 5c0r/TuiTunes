@@ -1,7 +1,15 @@
 import type { KeyEvent } from '@opentui/core';
 import type { CommandId } from '../commands';
 import { filterCommands } from '../commands';
-import type { FocusedPanel, MusicView, Overlay, PodcastView, Section } from '../store/ui';
+import type {
+  FocusedPanel,
+  MusicView,
+  Overlay,
+  PodcastView,
+  Section,
+  TranslationProviderId,
+} from '../store/ui';
+import { TRANSLATION_PROVIDER_ORDER, TRANSLATION_SETTINGS_FIELDS } from '../store/ui';
 
 /** Snapshot of the UI state the keyboard dispatcher decides against. */
 export interface KeyboardState {
@@ -45,6 +53,16 @@ function isEnter(name: string): boolean {
 /** Accept both the shifted-name form ('?') and plain-name+shift ('/' + shift). */
 function shifted(key: KeyEvent, plain: string, shiftedName: string): boolean {
   return key.name === shiftedName || (key.name === plain && key.shift === true);
+}
+
+function cycleTranslationProvider(
+  overlay: Extract<Overlay, { kind: 'translation-settings' }>,
+  delta: 1 | -1,
+): Overlay {
+  const order: readonly TranslationProviderId[] = TRANSLATION_PROVIDER_ORDER;
+  const index = order.indexOf(overlay.provider);
+  const next = order[(Math.max(index, 0) + delta + order.length) % order.length];
+  return { ...overlay, provider: next, error: null };
 }
 
 /**
@@ -179,7 +197,6 @@ export function dispatchKey(
       }
       case 'seek':
       case 'transcript-url':
-      case 'translation-language':
         if (name === 'escape') {
           actions.setOverlay(null);
           return true;
@@ -189,6 +206,57 @@ export function dispatchKey(
           return true;
         }
         return false;
+      case 'translation-settings': {
+        if (name === 'escape') {
+          // Escape first leaves an active text edit, then closes the form.
+          actions.setOverlay(overlay.editing ? { ...overlay, editing: false } : null);
+          return true;
+        }
+        if (overlay.editing) {
+          // Enter commits the edit; every other key reaches the focused input.
+          if (isEnter(name)) actions.setOverlay({ ...overlay, editing: false });
+          return isEnter(name);
+        }
+        const fields = TRANSLATION_SETTINGS_FIELDS;
+        const index = fields.indexOf(overlay.field);
+        if (name === 'down' || name === 'j') {
+          actions.setOverlay({
+            ...overlay,
+            field: fields[Math.min(index + 1, fields.length - 1)] ?? overlay.field,
+            error: null,
+          });
+          return true;
+        }
+        if (name === 'up' || name === 'k') {
+          actions.setOverlay({
+            ...overlay,
+            field: fields[Math.max(index - 1, 0)] ?? overlay.field,
+            error: null,
+          });
+          return true;
+        }
+        if (isEnter(name)) {
+          if (overlay.field === 'provider') {
+            actions.setOverlay(cycleTranslationProvider(overlay, 1));
+          } else if (
+            overlay.field === 'test' ||
+            overlay.field === 'save' ||
+            overlay.field === 'cancel'
+          ) {
+            actions.submitOverlay(overlay);
+          } else {
+            actions.setOverlay({ ...overlay, editing: true, error: null });
+          }
+          return true;
+        }
+        if (overlay.field === 'provider' && (name === 'left' || name === 'right')) {
+          actions.setOverlay(cycleTranslationProvider(overlay, name === 'right' ? 1 : -1));
+          return true;
+        }
+        // While the form is open it owns every remaining key, so application
+        // shortcuts (playback, library) cannot leak through it.
+        return true;
+      }
       case 'transcript-search': {
         if (name === 'escape') {
           actions.setOverlay(null);

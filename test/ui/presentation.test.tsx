@@ -41,7 +41,7 @@ import { Sidebar } from '../../src/ui/Sidebar';
 import { SourcePicker } from '../../src/ui/SourcePicker';
 import { TrackList } from '../../src/ui/TrackList';
 import { Transcript } from '../../src/ui/Transcript';
-import { TranslationLanguageInput } from '../../src/ui/TranslationLanguageInput';
+import { TranslationSettings } from '../../src/ui/TranslationSettings';
 import { usePresentation, type Presentation } from '../../src/ui/usePresentation';
 import { DEFAULT_CONFIG, type IconStyle } from '../../src/utils/config';
 import { makeTrack, renderTestApp } from '../helpers/app';
@@ -553,9 +553,24 @@ test('quit, seek and translation dialogs convert app-owned labels in ASCII mode'
 
   const translation = await testRender(
     <Provider store={store}>
-      <TranslationLanguageInput value="vi" currentLang="en" onInput={(): void => {}} />
+      <TranslationSettings
+        overlay={{
+          kind: 'translation-settings',
+          provider: 'lingva',
+          targetLanguage: 'vi',
+          sourceLanguage: '',
+          endpoint: '',
+          apiKey: '',
+          keySet: false,
+          field: 'target',
+          editing: false,
+          test: { state: 'idle' },
+          error: null,
+        }}
+        onChange={(): void => {}}
+      />
     </Provider>,
-    { width: 60, height: 14 },
+    { width: 60, height: 16 },
   );
   try {
     await translation.renderOnce();

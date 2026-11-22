@@ -53,7 +53,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 - YouTube Music search via [youtubei.js](https://github.com/LuanRT/YouTube.js) (no API key needed)
 - Audio streaming via mpv + [yt-dlp](https://github.com/yt-dlp/yt-dlp) (audio-only, ~83MB RAM)
 - Synced lyrics from [LRCLIB](https://lrclib.net/) with per-line highlighting
-- Lyrics translation via Lingva, DeepL, or MyMemory — cached locally per track + language
+- Lyrics and transcript translation: aligned YouTube captions when available, or an explicitly configured provider with SQLite caching
 - Queue restoration, favorites, and play history (SQLite)
 - Contextual artist/release browsing with paged albums, singles/EPs and top songs; append or play complete albums
 - Shuffle, repeat (off/track/all), playback speed (0.5x-2x)
@@ -257,7 +257,9 @@ Config file: `~/.config/tuimusic/config.json`
 {
   "volume": 80,
   "translationLanguage": null,
-  "translationProvider": "lingva",
+  "translationProvider": "none",
+  "translationSourceLanguage": null,
+  "libreTranslateEndpoint": null,
   "deeplApiKey": null,
   "lingvaInstance": null,
   "ascii": false,
@@ -272,6 +274,17 @@ mpv and yt-dlp are mandatory at startup. Legacy podcast library rows remain visi
 **Nerd Font icons are the default.** Set your terminal to a [Nerd Font Mono font](https://www.nerdfonts.com/font-downloads); TuiTunes does not bundle or install fonts. If you see boxes or misaligned icons, use `Ctrl+P` → **Toggle ASCII Mode** for ASCII chrome, or **Toggle Icon Style** for standard Unicode icons. ASCII overrides the saved icon style without changing it. Titles, lyrics, transcripts, and input are unchanged. Help and the palette show the effective mode.
 
 Use **Toggle Reduced Motion** and **Toggle Audio Spectrum** in the palette. Reduced motion suppresses decorative animation and spectrum capture/FFT without changing the saved spectrum preference. Spectrum defaults off, analyzes only this application's mpv audio, and fails closed when process isolation cannot be established. See [platform requirements and native validation](PLATFORM.md#process-only-audio-spectrum) before enabling it.
+
+### Translation
+
+Use **Configure Translation** in `Ctrl+P` to choose the target language, optional source override, and external provider. **Toggle Translation** tries native YouTube captions first, but uses them only when they fully align with the same video's original cues. Otherwise it uses your selected provider. No external service is selected by default; if translation is unavailable, the original lines stay visible. **Test Connection** sends a synthetic sample to the selected provider, never current lyrics or transcript text.
+
+- **LibreTranslate (local):** no usage fee. Run your own [LibreTranslate](https://docs.libretranslate.com/guides/installation/) instance with the language models you need, then select it in the palette. The suggested endpoint is `http://127.0.0.1:5000`. TuiTunes does not install, start, or manage the service. A hosted endpoint may charge fees.
+- **MyMemory:** opt-in for short music lyrics only. Set the source language in the picker. Long lines are split safely to fit the anonymous API's [500-byte per-request limit](https://mymemory.translated.net/doc/spec.php); its [daily quota](https://mymemory.translated.net/doc/usagelimits.php) still applies.
+- **DeepL:** opt-in with a valid `deeplApiKey`; account terms and limits apply. Missing credentials do not fall back to another provider.
+- **Lingva:** opt-in with an explicit instance URL. Existing custom instances and cached translations are preserved; the stock instance is no longer selected implicitly.
+
+LibreTranslate 1.9.6 was verified locally for Japanese → English, Vietnamese → English, and English → Vietnamese. These models occupied about 411 MiB and remained available after service restart. Translation quality varies: the synthetic samples included mistranslated Japanese terms. Check your actual language pairs and models before relying on it.
 
 Data stored in:
 - `~/.config/tuimusic/tuimusic.db` - Favorites, history, podcast subscriptions (SQLite)

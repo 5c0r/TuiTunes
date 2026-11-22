@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { CONFIG_PATH, DEFAULT_CONFIG, loadConfig, saveConfig } from '../../src/utils/config';
+import {
+  CONFIG_PATH,
+  DEFAULT_CONFIG,
+  loadConfig,
+  saveConfig,
+  type TuiTunesConfig,
+} from '../../src/utils/config';
 
 afterEach(() => rmSync(CONFIG_PATH, { force: true }));
 
@@ -48,6 +54,64 @@ describe('config persistence', () => {
     });
     saveConfig(config);
     expect(JSON.parse(readFileSync(CONFIG_PATH, 'utf8'))).toEqual(config);
+  });
+
+  test('the translation provider defaults to none and legacy Lingva survives only with a custom instance', () => {
+    expect(DEFAULT_CONFIG.translationProvider).toBe('none');
+
+    // The legacy default value without a custom instance resolves to none.
+    for (const instance of [undefined, null, '', 'https://lingva.ml', 'https://lingva.ml/']) {
+      writeFileSync(
+        CONFIG_PATH,
+        JSON.stringify({
+          translationProvider: 'lingva',
+          ...(instance === undefined ? {} : { lingvaInstance: instance }),
+        }),
+      );
+      expect(loadConfig().translationProvider).toBe('none');
+    }
+
+    // A genuinely custom instance keeps the legacy provider selection.
+    writeFileSync(
+      CONFIG_PATH,
+      JSON.stringify({
+        translationProvider: 'lingva',
+        lingvaInstance: 'https://lingva.example.com/',
+      }),
+    );
+    const kept = loadConfig();
+    expect(kept.translationProvider).toBe('lingva');
+    expect(kept.lingvaInstance).toBe('https://lingva.example.com/');
+
+    // Other stored provider values pass through; unsupported values fall back.
+    writeFileSync(CONFIG_PATH, JSON.stringify({ translationProvider: 'libretranslate' }));
+    expect(loadConfig().translationProvider).toBe('libretranslate');
+    writeFileSync(CONFIG_PATH, JSON.stringify({ translationProvider: 'unknown' }));
+    expect(loadConfig().translationProvider).toBe('none');
+  });
+
+  test('translation source language and LibreTranslate endpoint persist as optional strings', () => {
+  const config: TuiTunesConfig = {
+      ...DEFAULT_CONFIG,
+      translationProvider: 'libretranslate',
+      translationSourceLanguage: 'ja',
+      libreTranslateEndpoint: 'http://127.0.0.1:15097',
+    };
+    saveConfig(config);
+    expect(loadConfig()).toEqual(config);
+
+    // Missing, empty, or whitespace values read back as null (unset).
+    for (const raw of [undefined, '', '   ']) {
+      writeFileSync(
+        CONFIG_PATH,
+        JSON.stringify(
+          raw === undefined ? {} : { translationSourceLanguage: raw, libreTranslateEndpoint: raw },
+        ),
+      );
+      const loaded = loadConfig();
+      expect(loaded.translationSourceLanguage).toBeNull();
+      expect(loaded.libreTranslateEndpoint).toBeNull();
+    }
   });
 
   test('invalid fields fall back and finite volume is clamped', () => {
