@@ -20,6 +20,7 @@ import {
   selectEntry,
   setShuffle,
 } from '../store/queue-actions';
+import type { EpisodePlayIntent, EpisodeProgress } from './episode-progress';
 
 /** Outcome of a source-preference apply: saved, no-op, accepted load, cancelled, or failed. */
 export type SetSourcePreferenceResult =
@@ -27,8 +28,8 @@ export type SetSourcePreferenceResult =
   | { status: 'failed'; message: string };
 
 export interface PlaybackSession {
-  playDirect(track: Track): Promise<void>;
-  playQueueEntry(entryId: string): Promise<void>;
+  playDirect(track: Track, intent?: EpisodePlayIntent): Promise<void>;
+  playQueueEntry(entryId: string, intent?: EpisodePlayIntent): Promise<void>;
   enqueue(track: Track): void;
   /** Atomically append a validated batch; returns the appended entry IDs. */
   enqueueMany(tracks: readonly Track[]): string[];
@@ -63,6 +64,7 @@ export function createPlaybackSession(
     getSourcePreference: (key: string) => PlaybackSourcePreference;
     /** Persists a policy; Auto removes the row. Throws on DB failure. */
     saveSourcePreference: (key: string, pref: PlaybackSourcePreference) => void;
+    episodeProgress?: Pick<EpisodeProgress, 'prepareStart'>;
   },
 ): PlaybackSession {
   let generation = 0;
@@ -104,6 +106,7 @@ export function createPlaybackSession(
     track: Track,
     origin: PlaybackTarget['origin'],
     reservation?: { requestId: number; controller: AbortController },
+    episodeIntent?: EpisodePlayIntent,
   ): Promise<void> {
     if (disposed || !supported(track)) return;
     const requestId = reservation?.requestId ?? ++generation;
@@ -128,8 +131,16 @@ export function createPlaybackSession(
         !store.get(queueStateAtom).entries.some((entry) => entry.entryId === origin.entryId)
       )
         return;
+      const target: PlaybackTarget = {
+        track: { ...track, resolvedSource: source },
+        source,
+        requestId,
+        origin,
+      };
+      const startPosition = deps.episodeProgress?.prepareStart(target, episodeIntent);
       resolved = true;
-      await player.play({ track: { ...track, resolvedSource: source }, source, requestId, origin });
+      if (startPosition === undefined) await player.play(target);
+      else await player.play(target, { startPosition });
     } catch (error) {
       if (disposed || requestId !== generation || controller.signal.aborted) return;
       if (!resolved) {
@@ -150,15 +161,19 @@ export function createPlaybackSession(
       if (pending === controller) pending = null;
     }
   }
-  function start(track: Track, origin: PlaybackTarget['origin']): Promise<void> {
-    const job = play(track, origin);
+  function start(
+    track: Track,
+    origin: PlaybackTarget['origin'],
+    intent?: EpisodePlayIntent,
+  ): Promise<void> {
+    const job = play(track, origin, undefined, intent);
     jobs.add(job);
     void job.finally(() => jobs.delete(job));
     return job;
   }
-  function playQueueEntry(entryId: string): Promise<void> {
+  function playQueueEntry(entryId: string, intent?: EpisodePlayIntent): Promise<void> {
     const entry = store.get(queueStateAtom).entries.find((item) => item.entryId === entryId);
-    return entry ? start(entry.track, { kind: 'queue', entryId }) : Promise.resolve();
+    return entry ? start(entry.track, { kind: 'queue', entryId }, intent) : Promise.resolve();
   }
   function sameSourcePreference(a: PlaybackSourcePreference, b: PlaybackSourcePreference): boolean {
     if (a.mode !== b.mode) return false;
@@ -344,7 +359,7 @@ export function createPlaybackSession(
     return entries.map((entry) => entry.entryId);
   }
   return {
-    playDirect: (track) => start(track, { kind: 'direct' }),
+    playDirect: (track, intent) => start(track, { kind: 'direct' }, intent),
     playQueueEntry,
     enqueue(track) {
       if (!disposed && supported(track))

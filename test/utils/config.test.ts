@@ -74,4 +74,25 @@ describe('config persistence', () => {
     writeFileSync(CONFIG_PATH, JSON.stringify({ ascii: true, spectrumEnabled: false }));
     expect(loadConfig()).toEqual({ ...DEFAULT_CONFIG, ascii: true });
   });
+
+  test('icon style persists with Nerd Font default and Unicode opt-in', () => {
+    expect(DEFAULT_CONFIG.iconStyle).toBe('nerd-font');
+
+    saveConfig({ ...DEFAULT_CONFIG, iconStyle: 'nerd-font' });
+    expect(loadConfig().iconStyle).toBe('nerd-font');
+    saveConfig({ ...DEFAULT_CONFIG, iconStyle: 'unicode' });
+    expect(loadConfig().iconStyle).toBe('unicode');
+
+    // Missing (legacy), invalid, or non-string values fall back to Nerd Font.
+    writeFileSync(CONFIG_PATH, JSON.stringify({ volume: 20 }));
+    expect(loadConfig()).toEqual({ ...DEFAULT_CONFIG, volume: 20 });
+    writeFileSync(CONFIG_PATH, JSON.stringify({ iconStyle: 'emoji' }));
+    expect(loadConfig().iconStyle).toBe('nerd-font');
+    writeFileSync(CONFIG_PATH, JSON.stringify({ iconStyle: 3 }));
+    expect(loadConfig().iconStyle).toBe('nerd-font');
+
+    // A saved style survives alongside ASCII mode; ASCII only suppresses it.
+    saveConfig({ ...DEFAULT_CONFIG, ascii: true, iconStyle: 'unicode' });
+    expect(loadConfig()).toEqual({ ...DEFAULT_CONFIG, ascii: true, iconStyle: 'unicode' });
+  });
 });

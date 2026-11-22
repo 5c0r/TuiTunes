@@ -5,7 +5,9 @@ import { configAtom } from '../store/config';
 import {
   asciiText,
   borderPropsFor,
+  iconGlyph,
   scrollbarPropsFor,
+  type IconName,
   type PresentationBorderProps,
   type PresentationScrollbarProps,
 } from './presentation';
@@ -20,6 +22,8 @@ export interface Presentation {
   readonly scrollbarProps: PresentationScrollbarProps;
   /** Converts known app-owned chrome literals; identity when ASCII is off. */
   readonly text: (value: string) => string;
+  /** Resolves a semantic app icon for the effective style; ASCII wins. */
+  readonly icon: (name: IconName) => string;
 }
 
 /**
@@ -46,5 +50,6 @@ export function usePresentation(scrollRef?: RefObject<ScrollBoxRenderable | null
     borderProps: borderPropsFor(ascii),
     scrollbarProps: scrollbarPropsFor(ascii),
     text: ascii ? asciiText : (value: string) => value,
+    icon: (name: IconName): string => iconGlyph(name, config.iconStyle, ascii),
   };
 }

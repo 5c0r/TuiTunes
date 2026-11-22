@@ -32,6 +32,7 @@ export interface SearchController {
   search(query: string, section: Section): Promise<void>;
   loadMore(): Promise<void>;
   suggest(query: string): void;
+  dismissSuggestions(): void;
   openPodcast(podcast: Podcast): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -136,22 +137,28 @@ export function createSearchController(
     }
   }
 
-  function clearSuggestions(): void {
-    store.set(searchSuggestionsAtom, []);
-    store.set(suggestionsVisibleAtom, false);
-  }
-
-  function suggest(query: string): void {
+  function cancelSuggestionRequest(): void {
+    ++suggestRequestId;
     clearTimeout(suggestTimer);
     suggestTimer = undefined;
     suggestController?.abort();
     suggestController = null;
+  }
+
+  function dismissSuggestions(): void {
+    cancelSuggestionRequest();
+    store.set(searchSuggestionsAtom, []);
+    store.set(suggestionsVisibleAtom, false);
+    store.set(suggestionSelectedIdxAtom, -1);
+  }
+
+  function suggest(query: string): void {
     if (!query.trim() || query.length < 2 || store.get(sectionAtom) === 'podcast') {
-      ++suggestRequestId;
-      clearSuggestions();
+      dismissSuggestions();
       return;
     }
-    const requestId = ++suggestRequestId;
+    cancelSuggestionRequest();
+    const requestId = suggestRequestId;
     const queryAtSchedule = query;
     const controller = new AbortController();
     suggestController = controller;
@@ -197,26 +204,24 @@ export function createSearchController(
   return {
     async search(query: string, section: Section): Promise<void> {
       if (!query.trim()) return;
+      dismissSuggestions();
       if (section === 'podcast') return searchPodcasts(query);
       return searchMusic(query);
     },
     loadMore,
     suggest,
+    dismissSuggestions,
     openPodcast,
     async dispose(): Promise<void> {
       disposed = true;
       ++musicRequestId;
       ++podcastRequestId;
       ++episodesRequestId;
-      ++suggestRequestId;
       episodesController?.abort();
       episodesController = null;
       musicRequestController?.abort();
       musicRequestController = null;
-      suggestController?.abort();
-      suggestController = null;
-      clearTimeout(suggestTimer);
-      suggestTimer = undefined;
+      cancelSuggestionRequest();
     },
   };
 }

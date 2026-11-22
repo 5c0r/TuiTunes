@@ -54,7 +54,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 - Audio streaming via mpv + [yt-dlp](https://github.com/yt-dlp/yt-dlp) (audio-only, ~83MB RAM)
 - Synced lyrics from [LRCLIB](https://lrclib.net/) with per-line highlighting
 - Lyrics translation via Lingva, DeepL, or MyMemory — cached locally per track + language
-- Queue management, favorites, play history (SQLite)
+- Queue restoration, favorites, and play history (SQLite)
 - Contextual artist/release browsing with paged albums, singles/EPs and top songs; append or play complete albums
 - Shuffle, repeat (off/track/all), playback speed (0.5x-2x)
 
@@ -63,6 +63,7 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 - RSS feed parsing with subscription management
 - YouTube-backed playback for perfectly synced transcripts
 - Remember an episode's Auto, RSS, matched YouTube, or custom YouTube source independently of transcript overrides
+- Resume unfinished episodes and save timestamped bookmarks per audio source
 - Flowing transcript display with inline phrase highlighting
 - Smart paragraph splitting using sentence-ending punctuation
 
@@ -71,8 +72,9 @@ Built on [OpenTUI](https://github.com/mochji/opentui) (Zig native rendering + Re
 - 8 color themes: Tokyo Night, Catppuccin, Dracula, Nord, Gruvbox, Solarized, Rose Pine, Kanagawa
 - Command palette (Ctrl+P) with fuzzy-searchable commands
 - Full Unicode support (CJK, Vietnamese, emoji)
-- Vim-style navigation (j/k/g/G)
-- Independent ASCII-chrome and reduced-motion settings; Unicode media text is preserved
+- Vim-style navigation (j/k/g/G) and mouse navigation, playback controls, and click-to-seek
+- Nerd Font icons by default, with Unicode and ASCII options; media text is unchanged
+- Independent motion and spectrum settings
 - Opt-in process-only audio spectrum, never a decorative equalizer or whole-system recording
 
 ## Getting Started
@@ -181,6 +183,12 @@ bun run start
 | `Escape` | Back to main |
 | `?` | Help overlay |
 
+### Mouse
+
+Click section tabs, sidebar items, catalog tabs, or search suggestions to open them. Single-click a result, episode, album, or queue row to select it; double-click to open or play it. Wheel scrolling works on lists, and open dialogs block clicks and scrolling in the background.
+
+Use the playback buttons for play/pause, mute, and queue navigation. Click the progress bar to seek when mpv confirms the current audio is seekable and reports its duration. Next and Previous are queue controls, not direct-play controls.
+
 ### Actions
 
 | Key | Action |
@@ -198,7 +206,7 @@ TuiTunes has two independent sections, each with its own sidebar and search rout
 ### Music (Ctrl+1)
 
 - **Search** - YouTube Music search with pagination (Shift+L for page 2)
-- **Queue** - User-controlled playlist (q to add, x to remove)
+- **Queue** - User-controlled playlist (`q` to add, `x` to remove). Restart restores entries, shuffle order, repeat mode, and the selected row without starting playback. Press `Enter` on a row to start; Next/Previous do not start the restored queue on their own.
 - **Favorites** - Saved tracks (f to toggle, persisted in SQLite)
 - **History** - Recently played tracks
 
@@ -211,6 +219,8 @@ Use **Open Primary Artist** or **Open Album** in the command palette on a focuse
 - **Episodes** - Browse and play episodes from a feed
 
 Podcast **Auto** prefers a matched YouTube video and falls back to RSS. **Source for Selected Episode** saves a future-play preference; **Source for Playing Episode** can switch the active episode. RSS and matched YouTube are strict choices; a missing match does not silently become RSS. Custom YouTube accepts a video ID or supported YouTube URL. A genuine switch restarts at zero while retaining queue origin, pause, volume, mute and speed; its preference is committed only after the replacement loads. Transcript source overrides remain separate.
+
+Opening an episode resumes an eligible checkpoint for the audio source it actually loads. In `Ctrl+P`, **Resume Episode** requires a matching checkpoint, and **Play from Start** clears it for that audio source after the replacement loads. **Add Bookmark** saves the current confirmed position. In **Episode Bookmarks**, use `j`/`k` or the arrows to select, `Enter` to jump, `r` to rename, and `x` to delete with confirmation. An RSS bookmark cannot be used on the YouTube version, or vice versa.
 
 ## Themes
 
@@ -251,6 +261,7 @@ Config file: `~/.config/tuimusic/config.json`
   "deeplApiKey": null,
   "lingvaInstance": null,
   "ascii": false,
+  "iconStyle": "nerd-font",
   "reducedMotion": false,
   "spectrumEnabled": false
 }
@@ -258,7 +269,9 @@ Config file: `~/.config/tuimusic/config.json`
 
 mpv and yt-dlp are mandatory at startup. Legacy podcast library rows remain visible but cannot play until an episode with complete source metadata is saved again. Removing the current queue entry immediately advances in play order; only repeat-all wraps after the last entry.
 
-Use **Toggle ASCII Mode**, **Toggle Reduced Motion**, and **Toggle Audio Spectrum** in the palette. Their live state also appears in Help. ASCII affects application chrome only, not titles, lyrics, transcripts or input. Reduced motion suppresses decorative animation and spectrum capture/FFT without changing the saved spectrum preference. Spectrum defaults off, analyzes only this application's mpv audio, and fails closed when process isolation cannot be established. See [platform requirements and native validation](PLATFORM.md#process-only-audio-spectrum) before enabling it.
+**Nerd Font icons are the default.** Set your terminal to a [Nerd Font Mono font](https://www.nerdfonts.com/font-downloads); TuiTunes does not bundle or install fonts. If you see boxes or misaligned icons, use `Ctrl+P` → **Toggle ASCII Mode** for ASCII chrome, or **Toggle Icon Style** for standard Unicode icons. ASCII overrides the saved icon style without changing it. Titles, lyrics, transcripts, and input are unchanged. Help and the palette show the effective mode.
+
+Use **Toggle Reduced Motion** and **Toggle Audio Spectrum** in the palette. Reduced motion suppresses decorative animation and spectrum capture/FFT without changing the saved spectrum preference. Spectrum defaults off, analyzes only this application's mpv audio, and fails closed when process isolation cannot be established. See [platform requirements and native validation](PLATFORM.md#process-only-audio-spectrum) before enabling it.
 
 Data stored in:
 - `~/.config/tuimusic/tuimusic.db` - Favorites, history, podcast subscriptions (SQLite)

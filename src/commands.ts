@@ -219,6 +219,30 @@ export const COMMANDS = [
     category: 'queue',
   },
   {
+    id: 'episode-resume',
+    name: 'Resume Episode',
+    description: 'Continue the selected or current episode at its saved position',
+    category: 'playback',
+  },
+  {
+    id: 'episode-start',
+    name: 'Play from Start',
+    description: 'Start the selected or current episode over',
+    category: 'playback',
+  },
+  {
+    id: 'episode-bookmark-add',
+    name: 'Add Bookmark',
+    description: 'Save the current episode position',
+    category: 'playback',
+  },
+  {
+    id: 'episode-bookmarks',
+    name: 'Episode Bookmarks',
+    description: 'Jump to, rename, or delete a saved episode position',
+    category: 'navigation',
+  },
+  {
     id: 'transcript-url',
     name: 'Transcript: Custom URL',
     description: 'Load transcript from a SRT/VTT URL',
@@ -336,6 +360,12 @@ export const COMMANDS = [
     name: 'Add Album to Queue',
     description: 'Append the complete album without interrupting playback',
     category: 'queue',
+  },
+  {
+    id: 'toggle-icon-style',
+    name: 'Toggle Icon Style',
+    description: 'Switch icons between Nerd Font and Unicode',
+    category: 'view',
   },
   {
     id: 'toggle-ascii',

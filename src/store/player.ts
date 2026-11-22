@@ -33,6 +33,19 @@ export const playerTrackAtom = atom<Track | null>((get) => get(playerPlaybackAto
 
 /** Latest player error to surface in the UI, or null when healthy. */
 export const playerErrorAtom: PrimitiveAtom<string | null> = atom<string | null>(null);
+/**
+ * Nonfatal playback notice (e.g. the outcome of an attempted resume) to
+ * surface while playback continues; reset when a new play starts.
+ */
+export const playerNoticeAtom: PrimitiveAtom<string | null> = atom<string | null>(null);
+
+/**
+ * requestId of the committed playback while its file is confirmed seekable
+ * and no request-bound seek (initial start or recovery resume) is
+ * outstanding; null otherwise. Cleared before resets, target changes, EOF
+ * and disconnect, and restored only after recovery rebinding plus seek.
+ */
+export const playerSeekableRequestAtom: PrimitiveAtom<number | null> = atom<number | null>(null);
 
 /**
  * Identity of the mpv process actually backing playback (socket, pid,

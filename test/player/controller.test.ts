@@ -13,9 +13,11 @@ import {
   playerAudioBackendAtom,
   playerDurationAtom,
   playerErrorAtom,
+  playerNoticeAtom,
   playerPlaybackAtom,
   playerPositionAtom,
   playerProcessIdentityAtom,
+  playerSeekableRequestAtom,
   playerStateAtom,
   playerTrackAtom,
   playerVolumeAtom,
@@ -26,8 +28,10 @@ import {
 // Commands are auto-ACKed with success (loadfile ACKs carry a fresh
 // playlist_entry_id, exactly like mpv ≥0.35); events/properties are pushed
 // by the test, so every state transition is driven by awaited events, never
-// sleeps. manualLoadAck defers the loadfile ACK so tests can reorder events
-// ahead of it.
+// sleeps. manualLoadAck/manualSeekAck defer those ACKs so tests can reorder
+// events ahead of them; propertyValues serves get_property reads.
+// Observer reference: 1 time-pos, 2 duration, 3 pause, 4 volume, 12
+// paused-for-cache, 14 current-ao, 15 seekable (see OBSERVED_PROPERTIES).
 // ---------------------------------------------------------------------------
 
 interface RecordedCommand {
@@ -40,8 +44,13 @@ class FakeMpv {
   /** playlist_entry_id assigned to each loadfile ACK, in command order. */
   readonly loadEntryIds: number[] = [];
   manualLoadAck = false;
+  /** Defer seek ACKs so an outstanding request-bound seek is observable. */
+  manualSeekAck = false;
+  /** Values served for get_property reads; other names ACK with null. */
+  propertyValues: Record<string, unknown> = {};
   private entryCounter = 0;
   private pendingLoadAcks: number[] = [];
+  private pendingSeekAcks: number[] = [];
   private readonly server: ReturnType<typeof Bun.listen>;
   private sockets: Socket<unknown>[] = [];
   private waiters: Array<{
@@ -96,6 +105,15 @@ class FakeMpv {
             data: { playlist_entry_id: entryId },
           });
         }
+      } else if (cmd.command[0] === 'seek' && this.manualSeekAck) {
+        this.pendingSeekAcks.push(requestId);
+      } else if (cmd.command[0] === 'get_property') {
+        const name = String(cmd.command[1]);
+        this.write({
+          error: 'success',
+          request_id: requestId,
+          data: name in this.propertyValues ? this.propertyValues[name] : null,
+        });
       } else {
         this.write({ error: 'success', request_id: requestId, data: null });
       }
@@ -161,6 +179,13 @@ class FakeMpv {
     const requestId = this.pendingLoadAcks.shift();
     if (requestId === undefined) throw new Error('no pending loadfile to ACK');
     this.write({ error: 'success', request_id: requestId, data });
+  }
+
+  /** With manualSeekAck: deliver the pending seek success ACK. */
+  ackSeek(): void {
+    const requestId = this.pendingSeekAcks.shift();
+    if (requestId === undefined) throw new Error('no pending seek to ACK');
+    this.write({ error: 'success', request_id: requestId, data: null });
   }
 
   commandNames(): string[] {
@@ -524,6 +549,215 @@ describe('PlayerController', () => {
     const seek = await mpv.expectCommand((c) => c.command[0] === 'seek');
     expect(seek.command[1]).toBe(100);
     expect(seek.command[2]).toBe('absolute+exact');
+  });
+
+  // ── Request-bound seeks (startPosition / recovery resume) ────────────
+
+  test('startPosition seeks once after file-loaded; readiness waits for its outcome', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    mpv.manualSeekAck = true;
+    const target = makeTarget('a', 'https://example.com/a', 7);
+    const playing = controller.play(target, { startPosition: 120 });
+
+    await mpv.expectCommand((c) => c.command[0] === 'loadfile');
+    mpv.pushProperty(3, 'pause', false);
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    // Buffered before the commit: usable duration and confirmed seekability.
+    mpv.pushProperty(2, 'duration', 200);
+    mpv.pushProperty(15, 'seekable', true);
+    mpv.pushFileLoaded();
+
+    const seek = await mpv.expectCommand((c) => c.command[0] === 'seek');
+    expect(seek.command[1]).toBe(120);
+    expect(seek.command[2]).toBe('absolute+exact');
+    // The load itself stays ACK-bound: it resolves while the seek is still
+    // outstanding, so playback (and shutdown) never await the media load.
+    await playing;
+    // Readiness — the seekable confirmation — waits for the seek outcome.
+    expect(store.get(playerSeekableRequestAtom)).toBeNull();
+
+    mpv.ackSeek();
+    await waitForAtom(store, playerNoticeAtom, 'Resumed at 2:00');
+    await waitForAtom(store, playerSeekableRequestAtom, 7);
+    await waitForAtom(store, playerStateAtom, 'playing');
+
+    // At most once: a duplicate file-loaded never re-seeks.
+    mpv.pushFileLoaded();
+    mpv.pushProperty(4, 'volume', 61);
+    await waitForAtom(store, playerVolumeAtom, 61);
+    expect(mpv.commands.filter((c) => c.command[0] === 'seek')).toHaveLength(1);
+  });
+
+  test('startPosition clamps to the reported usable duration', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    await controller.play(makeTarget('a', 'https://example.com/a', 4), {
+      startPosition: 500,
+    });
+    await mpv.expectCommand((c) => c.command[0] === 'loadfile');
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    mpv.pushProperty(2, 'duration', 200);
+    mpv.pushProperty(15, 'seekable', true);
+    mpv.pushFileLoaded();
+
+    const seek = await mpv.expectCommand((c) => c.command[0] === 'seek');
+    expect(seek.command[1]).toBe(200);
+    await waitForAtom(store, playerNoticeAtom, 'Resumed at 3:20');
+    await waitForAtom(store, playerSeekableRequestAtom, 4);
+  });
+
+  test('an unseekable resume still plays, with a notice and no seek', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    const playing = controller.play(makeTarget('a', 'https://example.com/a', 3), {
+      startPosition: 90,
+    });
+    await mpv.expectCommand((c) => c.command[0] === 'loadfile');
+    mpv.pushProperty(3, 'pause', false);
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    mpv.pushProperty(2, 'duration', 200);
+    mpv.pushProperty(15, 'seekable', false);
+    mpv.pushFileLoaded();
+
+    await playing;
+    await waitForAtom(store, playerStateAtom, 'playing');
+    expect(store.get(playerNoticeAtom)).toBe('Could not resume at 1:30 — playing from the start');
+    expect(store.get(playerSeekableRequestAtom)).toBeNull();
+    // A volume marker proves no seek command was ever written.
+    mpv.pushProperty(4, 'volume', 62);
+    await waitForAtom(store, playerVolumeAtom, 62);
+    expect(mpv.commandNames().includes('seek')).toBe(false);
+  });
+
+  test('missing duration/seekable at file-loaded are read guarded before seeking', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    mpv.propertyValues = { duration: 300, seekable: true };
+    await controller.play(makeTarget('a', 'https://example.com/a', 5), {
+      startPosition: 500,
+    });
+    await mpv.expectCommand((c) => c.command[0] === 'loadfile');
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    mpv.pushFileLoaded();
+
+    // No buffered file properties: the controller resolves them by read.
+    await mpv.expectCommand(
+      (c) => c.command[0] === 'get_property' && c.command[1] === 'duration',
+    );
+    await mpv.expectCommand(
+      (c) => c.command[0] === 'get_property' && c.command[1] === 'seekable',
+    );
+    const seek = await mpv.expectCommand((c) => c.command[0] === 'seek');
+    expect(seek.command[1]).toBe(300);
+    // The guarded seekable read is authoritative: readiness publishes once
+    // the seek settles.
+    await waitForAtom(store, playerNoticeAtom, 'Resumed at 5:00');
+    await waitForAtom(store, playerSeekableRequestAtom, 5);
+  });
+
+  test('a manual seek after the start overrides the initial seek', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    const playing = controller.play(makeTarget('a', 'https://example.com/a', 6), {
+      startPosition: 120,
+    });
+    await mpv.expectCommand((c) => c.command[0] === 'loadfile');
+    // The user seeks while the file is still loading.
+    const manualSeek = controller.seekAbsolute(50);
+    await mpv.expectCommand((c) => c.command[0] === 'seek' && c.command[1] === 50);
+
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    mpv.pushProperty(2, 'duration', 200);
+    mpv.pushFileLoaded();
+    await manualSeek;
+    await playing;
+    await waitForAtom(store, playerStateAtom, 'playing');
+
+    // Only the manual seek was ever issued; no resume notice.
+    mpv.pushProperty(4, 'volume', 67);
+    await waitForAtom(store, playerVolumeAtom, 67);
+    const seeks = mpv.commands.filter((c) => c.command[0] === 'seek');
+    expect(seeks).toHaveLength(1);
+    expect(store.get(playerNoticeAtom)).toBeNull();
+    expect(store.get(playerSeekableRequestAtom)).toBeNull(); // seekability unresolved
+  });
+
+  test('a superseding play settles the stale seek without touching the new target', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    mpv.manualSeekAck = true;
+    const playA = controller.play(makeTarget('a', 'https://example.com/a', 1), {
+      startPosition: 120,
+    });
+    await mpv.expectCommand((c) => c.command[1] === 'https://example.com/a');
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    mpv.pushProperty(2, 'duration', 200);
+    mpv.pushProperty(15, 'seekable', true);
+    mpv.pushFileLoaded();
+    await mpv.expectCommand((c) => c.command[0] === 'seek'); // A's seek, unACKed
+
+    // B supersedes while A's seek ACK is still outstanding.
+    const playB = controller.play(makeTarget('b', 'https://example.com/b', 2));
+    await playA; // the load stays ACK-bound; the stale seek cannot delay it
+    await mpv.expectCommand((c) => c.command[1] === 'https://example.com/b');
+    mpv.pushStartFile(mpv.entryIdForLoad(2));
+    mpv.pushFileLoaded();
+    await playB;
+    await waitForAtom(store, playerStateAtom, 'playing');
+
+    // The late ACK for A's seek lands now: no notice, no seek for B.
+    mpv.ackSeek();
+    mpv.pushProperty(4, 'volume', 64);
+    await waitForAtom(store, playerVolumeAtom, 64);
+    expect(mpv.commands.filter((c) => c.command[0] === 'seek')).toHaveLength(1);
+    expect(store.get(playerNoticeAtom)).toBeNull();
+    expect(store.get(playerSeekableRequestAtom)).toBeNull(); // B never observed seekable
+  });
+
+  test('a crash before the initial seek lands recovers at the intended position', async () => {
+    await controller.init();
+    const mpv = port.instances[0];
+    mpv.manualSeekAck = true;
+    const playing = controller.play(makeTarget('a', 'https://example.com/a', 4), {
+      startPosition: 120,
+    });
+    await mpv.expectCommand((c) => c.command[0] === 'loadfile');
+    mpv.pushStartFile(mpv.entryIdForLoad(1));
+    mpv.pushProperty(2, 'duration', 200);
+    mpv.pushFileLoaded();
+    await mpv.expectCommand((c) => c.command[0] === 'seek'); // unACKed
+    // Pre-seek noise must not become the recovery position.
+    mpv.pushProperty(1, 'time-pos', 3);
+    await waitForAtom(store, playerPositionAtom, 3);
+
+    mpv.crash();
+    await playing; // the intent settles as moot, not by sampling zero
+    await waitUntil(() => port.instances.length >= 2, 'recovery respawn');
+    const revived = port.instances[1];
+    await revived.expectCommand((c) => c.command[0] === 'loadfile');
+    revived.pushStartFile(revived.entryIdForLoad(1));
+    revived.pushFileLoaded();
+    const seek = await revived.expectCommand((c) => c.command[0] === 'seek');
+    expect(seek.command[1]).toBe(120);
+    await waitForAtom(store, playerNoticeAtom, 'Resumed at 2:00');
+    await waitForAtom(store, playerStateAtom, 'playing');
+  });
+
+  test('playerSeekableRequestAtom publishes only while active, seekable and settled', async () => {
+    const mpv = await startPlaying(makeTarget('a', 'https://example.com/a', 9));
+    // Committed and playing, but seekability unobserved: nothing publishes.
+    mpv.pushProperty(4, 'volume', 58);
+    await waitForAtom(store, playerVolumeAtom, 58);
+    expect(store.get(playerSeekableRequestAtom)).toBeNull();
+
+    mpv.pushProperty(15, 'seekable', true);
+    await waitForAtom(store, playerSeekableRequestAtom, 9);
+
+    // EOF invalidates it even though the file was seekable.
+    mpv.pushEndFile(mpv.entryIdForLoad(1), 'eof');
+    await waitForAtom(store, playerStateAtom, 'stopped');
+    expect(store.get(playerSeekableRequestAtom)).toBeNull();
   });
 
   test('crash recovery reloads the same resolved source, seeking only after file-loaded', async () => {

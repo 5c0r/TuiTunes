@@ -7,7 +7,7 @@ import { COMMANDS, type Command, KEY_BINDINGS } from '../commands';
 import { configAtom } from '../store/config';
 import {
   TOGGLE_COMMAND_IDS,
-  toggleStatusLabel,
+  toggleStateLabel,
   toggleStatusFor,
   type ToggleCommandId,
   type ToggleStatus,
@@ -109,8 +109,10 @@ export function HelpOverlay() {
                           {p.text(row.key.padEnd(12))}
                         </text>
                         <text fg={t.fg}>{p.text(row.description)}</text>
-                        {status !== null && (
-                          <text fg={statusColor(status, t)}>[{toggleStatusLabel(status)}]</text>
+                        {row.id !== undefined && status !== null && (
+                          <text fg={statusColor(status, t)}>
+                            [{toggleStateLabel(row.id, config)}]
+                          </text>
                         )}
                       </box>
                     );

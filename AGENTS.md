@@ -83,11 +83,13 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | `src/application/runtime.ts` | Injected resource assembly and session disposal |
 | `src/application/catalog.ts` | Abortable artist/album frame stack, paging, complete-album collection |
 | `src/application/spectrum.ts` | Capture generation, playback/config eligibility, drain-before-replacement lifecycle |
+| `src/application/queue-persistence.ts` | Versioned SQLite queue snapshot, compare-and-swap saves, no autoplay on restore |
+| `src/application/episode-progress.ts` | Source-scoped podcast checkpoints, natural EOF completion, and bookmark CRUD |
 
 ### Player (mpv IPC)
 | File | Purpose |
 |---|---|
-| `src/player/types.ts` | Typed IPC responses/events, native playlist entry IDs and 14 observed properties |
+| `src/player/types.ts` | Typed IPC responses/events, native playlist entry IDs and 15 observed properties |
 | `src/player/process.ts` | Owned mpv process handle: PID, socket and per-spawn audio client identity |
 | `src/player/ipc.ts` | MpvIPC class: Unix socket connect, JSON protocol, command/response, property observation |
 | `src/player/controller.ts` | Source-aware mpv lifecycle, deterministic state, recovery; no DB policy |
@@ -111,7 +113,7 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | File | Atoms |
 |---|---|
 | `src/store/player.ts` | position, duration, volume, mute, speed, state, track, progress (derived) |
-| `src/store/queue.ts` | One queue state: insertion entries, play-order IDs, cursor, shuffle/repeat |
+| `src/store/queue.ts` | Insertion entries, play order, cursor, shuffle/repeat, and a separate durable queue selection |
 | `src/store/queue-actions.ts` | Pure identity-based enqueue/select/remove/navigation transitions |
 | `src/store/ui.ts` | Views, focus, exclusive overlay union, search state, layout/theme |
 | `src/store/library.ts` | favoritesSet, favorites, history |
@@ -124,10 +126,10 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 ### UI Components
 | File | Purpose |
 |---|---|
-| `src/ui/Header.tsx` | Section tabs (Music/Podcast) + search input |
+| `src/ui/Header.tsx` | Section tabs and search input; fixed header height must survive scrolling content below it |
 | `src/ui/Sidebar.tsx` | Section-aware navigation (music: 4 views, podcast: 3 views) |
 | `src/ui/TrackList.tsx` | Track/episode list with playing indicator, page-based scroll |
-| `src/ui/NowPlaying.tsx` | Playback controls/status, progress, source badge and optional real spectrum |
+| `src/ui/NowPlaying.tsx` | Playback controls/status, request-bound click-to-seek, source badge, optional real spectrum |
 | `src/ui/Lyrics.tsx` | Synced music lyrics with per-line gradient highlighting |
 | `src/ui/Transcript.tsx` | Podcast transcript: flowing text, paragraph-level + inline phrase highlight |
 | `src/ui/CommandPalette.tsx` | Fuzzy command search overlay (pure renderer, no useKeyboard) |
@@ -140,7 +142,9 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | `src/ui/useTheme.ts` | React hook: reads active theme from store |
 | `src/ui/{CatalogView,AlbumList}.tsx` | Contextual paged artist/release views |
 | `src/ui/SourcePicker.tsx` | Pure per-episode playback-source overlay |
-| `src/ui/{presentation,usePresentation}.ts` | ASCII chrome, motion policy and live setting labels |
+| `src/ui/EpisodeBookmarks.tsx` | Pure episode bookmark list and rename/delete overlay |
+| `src/ui/{presentation,usePresentation}.ts` | Semantic icon profiles (default Nerd Font, Unicode, ASCII), motion policy and live setting labels |
+| `src/ui/usePointerClicks.ts` | Per-surface press/release and double-click tracking; App owns actions and modal hit isolation |
 | `src/ui/Spectrum.tsx` | Latest PCM-derived spectrum bars and capture diagnostics |
 
 ### Spectrum and native release
@@ -157,7 +161,7 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 ### Database
 | File | Purpose |
 |---|---|
-| `src/db/index.ts` | bun:sqlite setup, WAL mode, migrations (favorites, history, podcast_feeds) |
+| `src/db/index.ts` | bun:sqlite setup, WAL mode, migrations for library, episode progress/bookmarks and queue snapshots |
 | `src/db/queries.ts` | CRUD: favorites, history, podcast subscriptions |
 
 ### Utilities
@@ -248,7 +252,7 @@ Quit works from any state. Palette cannot replace another blocking overlay; layo
 
 ### Playback
 14. **Queue is user-controlled** — playing from search does NOT add to queue. Only `q` key adds.
-15. **Queue identity** — each duplicate has its own entryId; cursor is an ID in play order, never an insertion/shuffle index. Direct playback clears queue traversal.
+15. **Queue identity** — each duplicate has its own entryId. The cursor is an ID in play order, never an insertion/shuffle index. Direct playback clears traversal. A restored selection is visual only and never becomes the cursor until explicit play.
 16. **Podcast YouTube-backed playback** — when possible, plays YouTube version of podcast for synced transcript.
 17. **Speed presets** — 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0. mpv's scaletempo2 preserves pitch.
 
@@ -285,14 +289,16 @@ Before any feature change, check these:
 | Player atoms | playerProgressAtom derivation | test/store/player.test.ts |
 | Queue projections | Entry identity and traversal ownership | test/store/queue.test.ts |
 | Queue transitions | Shuffle, successor/removal, duplicates | test/store/queue-actions.test.ts |
+| Listening state | Source-bound resume/bookmarks, queue restart and concurrent saves; actual App interaction | test/application/{episode-progress,queue-persistence}.test.ts, test/ui/listening-state.test.tsx |
 | DB queries | Favorites CRUD, history, in-memory SQLite | test/db/queries.test.ts |
 | App search | Fresh and continuation stale results/loading | test/ui/app-search.test.tsx |
 | Request owners | Playback/lyrics/search races and cancellation | test/application/{playback,lyrics,search}.test.ts |
 | Keyboard | Real App input/overlay exclusivity | test/ui/app-keyboard.test.tsx |
+| Mouse | Real renderer hit tests, search focus, identity-based rows, queue panes, wheel and modal isolation | test/ui/app-mouse.test.tsx |
 | Media persistence | Feed identity, legacy migrations, source codecs | test/db/media.test.ts |
 | Process lifecycle | Fake IPC plus actual headless mpv | test/player/controller.test.ts, test/integration/player-lifecycle.test.ts |
 | Provider boundaries | Real SDK nodes, translation alignment/cardinality, parser inputs, owned subprocesses | test/providers/{youtube,translate,translate-integration,rss,subtitle-parser,podcast,podcast-youtube,transcript,yt-dlp}.test.ts |
-| Player surface | Errors without a loaded track; playing/paused/buffering/stopped rendering | test/ui/now-playing.test.tsx |
+| Player surface | State/error rendering, measured seek bar and clickable playback controls | test/ui/now-playing.test.tsx |
 | Isolation | Nested scratch-home sentinel probe | test/utils/isolation.test.ts, test/fixtures/isolation-child.test.ts |
 | Test harness | Pre-import sandbox and typed UI/player fixtures | test/preload.ts, test/helpers/{app.tsx,player.ts} |
 | Release proof | Weighted LCOV inventory gate and compiled PTY smoke | scripts/check-coverage.ts, scripts/smoke-compiled.ts |

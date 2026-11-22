@@ -9,6 +9,14 @@ export interface PlayerLoadOptions {
    * replacement is still loading) carries through to the new file.
    */
   preservePause?: boolean;
+  /**
+   * Initial seek target in seconds, bound to this load's request: applied
+   * at most once after this target's file loads (clamped to the usable
+   * duration, skipped with a nonfatal notice when the file is not
+   * seekable). The play() promise settles only after that seek has
+   * succeeded or terminally failed.
+   */
+  startPosition?: number;
 }
 
 /** Identity of the mpv process actually backing playback. */
@@ -54,11 +62,13 @@ export interface MpvPropertyMap {
   metadata: Record<string, string>;
   'playlist-pos': number;
   'playlist-count': number;
-  'idle-active': boolean;
   'core-idle': boolean;
+  'idle-active': boolean;
   'paused-for-cache': boolean;
   speed: number;
   'current-ao': string;
+  /** File-scoped: whether the loaded file supports seeking. */
+  'seekable': boolean;
 }
 
 export const OBSERVED_PROPERTIES: ReadonlyArray<{ id: number; name: keyof MpvPropertyMap }> = [
@@ -76,6 +86,7 @@ export const OBSERVED_PROPERTIES: ReadonlyArray<{ id: number; name: keyof MpvPro
   { id: 12, name: 'paused-for-cache' },
   { id: 13, name: 'speed' },
   { id: 14, name: 'current-ao' },
+  { id: 15, name: 'seekable' },
 ] as const;
 
 /**

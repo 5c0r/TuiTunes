@@ -6,7 +6,7 @@ import { filterCommands } from '../commands';
 import { configAtom } from '../store/config';
 import {
   TOGGLE_COMMAND_IDS,
-  toggleStatusLabel,
+  toggleStateLabel,
   toggleStatusFor,
   type ToggleCommandId,
   type ToggleStatus,
@@ -91,10 +91,10 @@ export function CommandPalette({ filter, selectedIdx, onFilterChange }: CommandP
               >
                 {p.text(cmd.name)}
               </text>
-              {status !== null && (
+              {toggleId !== null && status !== null && (
                 <text fg={statusColor(status, t)} flexShrink={0}>
                   {' '}
-                  [{toggleStatusLabel(status)}]
+                  [{toggleStateLabel(toggleId, config)}]
                 </text>
               )}
               <text fg={t.dim} truncate>

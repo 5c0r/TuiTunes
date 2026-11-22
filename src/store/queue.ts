@@ -24,3 +24,7 @@ export const queueEntriesAtom = atom((get) => get(queueStateAtom).entries);
 export const repeatAtom = atom((get) => get(queueStateAtom).repeat);
 export const shuffleAtom = atom((get) => get(queueStateAtom).shuffle);
 export const playingFromQueueAtom = atom((get) => get(queueStateAtom).cursorId !== null);
+/** Queue-list selection identity, independent of the playback cursor. */
+export const queueSelectionIdAtom = atom<string | null>(null);
+/** Nonfatal queue snapshot persistence warning; null while healthy. */
+export const queuePersistenceErrorAtom = atom<string | null>(null);

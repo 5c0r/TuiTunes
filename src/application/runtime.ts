@@ -10,11 +10,14 @@ import type { resolvePlaybackSource } from '../providers/media';
 import type { PodcastProvider } from '../providers/podcast';
 import type { IProvider } from '../providers/types';
 import type { SpectrumCapturePort } from '../spectrum/types';
+import { queueSelectionIdAtom, queueStateAtom } from '../store/queue';
 import { type CatalogController, createCatalogController } from './catalog';
+import { createEpisodeProgress, type EpisodeProgress } from './episode-progress';
 import type { LyricsDependencies, LyricsSession } from './lyrics';
 import { createLyricsSession } from './lyrics';
 import type { PlaybackSession } from './playback';
 import { createPlaybackSession } from './playback';
+import { createQueuePersistence } from './queue-persistence';
 import type { SearchController } from './search';
 import { createSearchController } from './search';
 import { createSpectrumSession, type SpectrumSession } from './spectrum';
@@ -37,6 +40,7 @@ export interface AppRuntime {
   readonly search: SearchController;
   readonly catalog: CatalogController;
   readonly spectrum: SpectrumSession;
+  readonly episodeProgress: EpisodeProgress;
   readonly musicProviderId: string;
   dispose(): Promise<void>;
 }
@@ -48,8 +52,12 @@ export interface AppRuntime {
  * the injected DB or player — bootstrap destroys them.
  */
 export function createAppRuntime(store: Store, deps: RuntimeDependencies): AppRuntime {
+  const queuePersistence = createQueuePersistence(store, deps.db);
+  // Register EOF progress before playback's repeat/advance handler can replace the target.
+  const episodeProgress = createEpisodeProgress(store, deps.db, deps.player);
   const playback = createPlaybackSession(store, deps.player, {
     resolve: deps.resolve,
+    episodeProgress,
     getSourcePreference: (key) => getPlaybackSourcePreference(deps.db, key),
     saveSourcePreference: (key, preference) =>
       setPlaybackSourcePreference(deps.db, key, preference),
@@ -57,6 +65,11 @@ export function createAppRuntime(store: Store, deps: RuntimeDependencies): AppRu
       // The playback session deduplicates by requestId; write history once per
       // successful load with the enriched track (resolvedSource included).
       addToHistory(deps.db, target.track);
+      if (
+        target.origin.kind === 'queue' &&
+        store.get(queueStateAtom).cursorId === target.origin.entryId
+      )
+        store.set(queueSelectionIdAtom, target.origin.entryId);
     },
   });
   const lyrics = createLyricsSession(store, {
@@ -81,8 +94,12 @@ export function createAppRuntime(store: Store, deps: RuntimeDependencies): AppRu
     search,
     catalog,
     spectrum,
+    episodeProgress,
     musicProviderId: deps.music.id,
     async dispose(): Promise<void> {
+      // Save the last confirmed checkpoint before playback is torn down or SQLite closes.
+      episodeProgress.dispose();
+      queuePersistence.dispose();
       const results = await Promise.allSettled([
         spectrum.dispose(),
         catalog.dispose(),

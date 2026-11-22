@@ -65,20 +65,24 @@ describe('isMpvResponse', () => {
 });
 
 describe('OBSERVED_PROPERTIES', () => {
-  test('has 14 entries', () => {
-    expect(OBSERVED_PROPERTIES).toHaveLength(14);
+  test('has 15 entries', () => {
+    expect(OBSERVED_PROPERTIES).toHaveLength(15);
   });
 
-  test('ids are unique integers 1..14', () => {
+  test('ids are unique integers 1..15', () => {
     const ids = OBSERVED_PROPERTIES.map((p) => p.id);
-    expect(new Set(ids).size).toBe(14);
-    for (let i = 1; i <= 14; i++) {
+    expect(new Set(ids).size).toBe(15);
+    for (let i = 1; i <= 15; i++) {
       expect(ids).toContain(i);
     }
   });
 
   test('observer 14 is current-ao', () => {
     expect(OBSERVED_PROPERTIES[13]).toEqual({ id: 14, name: 'current-ao' });
+  });
+
+  test('observer 15 is seekable', () => {
+    expect(OBSERVED_PROPERTIES[14]).toEqual({ id: 15, name: 'seekable' });
   });
 });
 

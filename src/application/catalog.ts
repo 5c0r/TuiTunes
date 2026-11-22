@@ -24,8 +24,8 @@ export type CatalogPlayback = Pick<PlaybackSession, 'enqueueMany' | 'playAlbum'>
 export interface CatalogController {
   openArtist(id: string, returnTo?: CatalogReturn): Promise<void>;
   openAlbum(id: string, returnTo?: CatalogReturn): Promise<void>;
-  navigate(direction: 'up' | 'down' | 'first' | 'last'): void;
-  changeTab(direction: 'next' | 'previous'): void;
+  navigate(direction: 'up' | 'down' | 'first' | 'last' | number): void;
+  changeTab(direction: 'next' | 'previous' | CatalogCollection): void;
   loadMore(): Promise<void>;
   retry(): Promise<void>;
   /** Returns the base view/index when the root frame is popped, else null. */
@@ -541,23 +541,17 @@ export function createCatalogController(
       const frame = topFrame();
       if (!frame) return;
       updateFrame(frame.frameId, (current) => {
-        const length =
-          current.kind === 'album'
-            ? current.tracks.items.length
-            : (current.activeTab === 'albums'
-                ? current.albums
-                : current.activeTab === 'singles'
-                  ? current.singles
-                  : current.songs
-              ).items.length;
+        const length = collectionState(current, collectionSlot(current))?.items.length ?? 0;
         const position =
           current.kind === 'artist' ? current.selections[current.activeTab] : current.selectedIndex;
         const moved =
-          direction === 'first'
-            ? 0
-            : direction === 'last'
-              ? length - 1
-              : position + (direction === 'down' ? 1 : -1);
+          typeof direction === 'number'
+            ? direction
+            : direction === 'first'
+              ? 0
+              : direction === 'last'
+                ? length - 1
+                : position + (direction === 'down' ? 1 : -1);
         const clamped = Math.max(0, Math.min(moved, Math.max(0, length - 1)));
         if (current.kind === 'album') return { ...current, selectedIndex: clamped };
         return { ...current, selections: { ...current.selections, [current.activeTab]: clamped } };
@@ -568,10 +562,13 @@ export function createCatalogController(
       if (disposed) return;
       const frame = topFrame();
       if (!frame || frame.kind !== 'artist') return;
-      const offset = direction === 'next' ? 1 : -1;
       const index = ARTIST_TAB_ORDER.indexOf(frame.activeTab);
+      const offset = direction === 'next' ? 1 : -1;
       const next =
-        ARTIST_TAB_ORDER[(index + offset + ARTIST_TAB_ORDER.length) % ARTIST_TAB_ORDER.length];
+        direction === 'next' || direction === 'previous'
+          ? ARTIST_TAB_ORDER[(index + offset + ARTIST_TAB_ORDER.length) % ARTIST_TAB_ORDER.length]
+          : direction;
+      if (next === frame.activeTab) return;
       updateFrame(frame.frameId, (current) =>
         current.kind === 'artist' ? { ...current, activeTab: next } : current,
       );

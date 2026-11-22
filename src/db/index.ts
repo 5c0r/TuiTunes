@@ -135,6 +135,36 @@ export function runMigrations(database: Database): void {
       }
       database.exec('PRAGMA user_version = 3');
     }
+    if (version < 4) {
+      database.exec(`CREATE TABLE episode_progress (
+        media_key TEXT NOT NULL,
+        audio_key TEXT NOT NULL,
+        position_ms INTEGER NOT NULL CHECK (position_ms >= 0),
+        duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+        completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (media_key, audio_key)
+      );
+      CREATE TABLE episode_bookmarks (
+        id TEXT PRIMARY KEY NOT NULL,
+        media_key TEXT NOT NULL,
+        audio_key TEXT NOT NULL,
+        position_ms INTEGER NOT NULL CHECK (position_ms >= 0),
+        label TEXT NOT NULL CHECK (length(trim(label)) > 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX idx_episode_bookmarks_media ON episode_bookmarks(media_key, position_ms);
+      PRAGMA user_version = 4`);
+    }
+    if (version < 5) {
+      database.exec(`CREATE TABLE queue_snapshot (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        payload TEXT NOT NULL
+      );
+      PRAGMA user_version = 5`);
+    }
   })();
 }
 

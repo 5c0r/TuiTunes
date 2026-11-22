@@ -334,7 +334,7 @@ describe('resolvePlaybackSource policy matrix', () => {
   });
 });
 
-test('version 2 → version 3 migration adds catalog columns and preferences atomically', () => {
+test('upgrading from version 2 preserves library rows and accepts persisted listening state', () => {
   const db = new Database(':memory:');
   try {
     db.exec(`CREATE TABLE favorites(id TEXT PRIMARY KEY,provider TEXT NOT NULL,track_id TEXT NOT NULL,title TEXT NOT NULL,artist TEXT NOT NULL,album TEXT,duration INTEGER,added_at INTEGER NOT NULL,source_json TEXT,resolved_source_json TEXT,media_key TEXT);
@@ -345,7 +345,7 @@ test('version 2 → version 3 migration adds catalog columns and preferences ato
       PRAGMA user_version = 2;`);
     runMigrations(db);
     expect(db.query<{ user_version: number }, []>('PRAGMA user_version').get()).toEqual({
-      user_version: 3,
+      user_version: 5,
     });
     const columns = (table: string) =>
       db
@@ -368,11 +368,14 @@ test('version 2 → version 3 migration adds catalog columns and preferences ato
       { id: 'f1', album: 'Album' },
     ]);
     expect(db.query('SELECT id FROM history').all()).toEqual([{ id: 1 }]);
+    db.exec(`INSERT INTO episode_progress VALUES('episode', 'rss:v1', 25000, 50000, 0, 1);
+      INSERT INTO queue_snapshot VALUES(1, 1, '{"version":1}');`);
     // Re-running the migration sequence is a no-op.
     runMigrations(db);
-    expect(db.query<{ user_version: number }, []>('PRAGMA user_version').get()).toEqual({
-      user_version: 3,
+    expect(db.query('SELECT position_ms FROM episode_progress').get()).toEqual({
+      position_ms: 25_000,
     });
+    expect(db.query('SELECT revision FROM queue_snapshot').get()).toEqual({ revision: 1 });
   } finally {
     db.close();
   }
