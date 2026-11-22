@@ -37,7 +37,7 @@ import {
   catalogSelectionAtom,
   catalogStateAtom,
 } from './store/catalog';
-import { configAtom } from './store/config';
+import { configAtom, lyricFollowModeAtom } from './store/config';
 import { favoritesAtom, favoritesSetAtom, historyAtom } from './store/library';
 import { lyricsDataAtom, lyricsVisibleAtom, translationEnabledAtom } from './store/lyrics';
 import {
@@ -150,6 +150,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   const setLyricsVisible = useSetAtom(lyricsVisibleAtom);
   const lyricsData = useAtomValue(lyricsDataAtom);
   const timing = useAtomValue(lyricTimingAtom);
+  const lyricFollowMode = useAtomValue(lyricFollowModeAtom);
   const timingDelay =
     overlay?.kind === 'lyric-timing' && timing === overlay.context
       ? overlay.delayMs
@@ -1306,7 +1307,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         (section === 'podcast' ? (
           <Transcript />
         ) : (
-          <Lyrics delayMs={timingDelay} followMode={config.lyricFollowMode} />
+          <Lyrics delayMs={timingDelay} followMode={lyricFollowMode} />
         ))}
     </box>
   );
