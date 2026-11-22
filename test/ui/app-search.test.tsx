@@ -13,12 +13,6 @@ import type {
   Track,
 } from '../../src/providers/types';
 import { lyricsDocumentAtom, lyricsVisibleAtom } from '../../src/store/lyrics';
-import {
-  playerDurationAtom,
-  playerPositionAtom,
-  playerSpeedAtom,
-  playerVolumeAtom,
-} from '../../src/store/player';
 import { podcastSearchLoadingAtom, podcastSearchResultsAtom } from '../../src/store/podcast';
 import {
   focusedPanelAtom,
@@ -528,22 +522,6 @@ test('palette transcript search reopens lyrics closed after callback creation', 
 
     expect(captureCharFrame()).toContain('Find:');
     expect(store.get(lyricsVisibleAtom)).toBe(true);
-  } finally {
-    await cleanup();
-  }
-});
-
-test('renders two spaces between NowPlaying speed and time', async () => {
-  const store = createStore();
-  store.set(playerVolumeAtom, 75);
-  store.set(playerSpeedAtom, 1.5);
-  store.set(playerPositionAtom, 65);
-  store.set(playerDurationAtom, 130);
-  const { captureCharFrame, renderOnce, cleanup } = await renderTestApp({ store });
-
-  try {
-    await renderOnce();
-    expect(captureCharFrame()).toContain('🔊75% 1.5x  1:05 / 2:10');
   } finally {
     await cleanup();
   }

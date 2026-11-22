@@ -7,6 +7,8 @@ import type { FocusedPanel, MusicView, Overlay, PodcastView, Section } from '../
 export interface KeyboardState {
   overlay: Overlay | null;
   focusedPanel: FocusedPanel;
+  /** The sidebar focus slot belongs to the queue in split and wide layouts. */
+  queuePane?: boolean;
   section: Section;
   musicView: MusicView;
   podcastView: PodcastView;
@@ -140,6 +142,41 @@ export function dispatchKey(
         }
         return true;
       }
+      case 'episode-bookmarks': {
+        if (name === 'escape') {
+          actions.setOverlay(
+            overlay.editing ? { ...overlay, editing: null, value: '', error: null } : null,
+          );
+          return true;
+        }
+        if (isEnter(name)) {
+          actions.submitOverlay(overlay);
+          return true;
+        }
+        if (overlay.editing === 'rename') return false;
+        if (overlay.editing === 'delete') return true;
+        if (name === 'up' || name === 'k' || name === 'down' || name === 'j') {
+          const step = name === 'up' || name === 'k' ? -1 : 1;
+          actions.setOverlay({
+            ...overlay,
+            selectedIdx: Math.max(
+              0,
+              Math.min(overlay.bookmarks.length - 1, overlay.selectedIdx + step),
+            ),
+            error: null,
+          });
+        } else if (!key.ctrl && !key.meta && !key.option && (name === 'r' || name === 'x')) {
+          const bookmark = overlay.bookmarks[overlay.selectedIdx];
+          if (bookmark)
+            actions.setOverlay({
+              ...overlay,
+              editing: name === 'r' ? 'rename' : 'delete',
+              value: name === 'r' ? bookmark.label : '',
+              error: null,
+            });
+        }
+        return true;
+      }
       case 'seek':
       case 'transcript-url':
       case 'translation-language':
@@ -262,7 +299,7 @@ export function dispatchKey(
   if (hasModifier) return false;
 
   // Sidebar navigation.
-  if (state.focusedPanel === 'sidebar') {
+  if (state.focusedPanel === 'sidebar' && !state.queuePane) {
     if (name === 'j' || name === 'down') {
       actions.navigate('down');
       return true;
@@ -290,7 +327,7 @@ export function dispatchKey(
   }
 
   // Main panel navigation and selection commands.
-  if (state.focusedPanel === 'main' && state.hasSelection) {
+  if ((state.focusedPanel === 'main' || state.queuePane) && state.hasSelection) {
     if (name === 'j' || name === 'down') {
       actions.navigate('down');
       return true;
@@ -319,7 +356,7 @@ export function dispatchKey(
       actions.command('queue-add');
       return true;
     }
-    if (name === 'x' && state.section === 'music' && state.musicView === 'queue') {
+    if (name === 'x' && (state.queuePane || (state.section === 'music' && state.musicView === 'queue'))) {
       actions.command('queue-remove');
       return true;
     }

@@ -5,10 +5,14 @@ import {
   TextAttributes,
 } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
-import { Provider, useAtomValue, useSetAtom } from 'jotai';
+import { atom, Provider, useAtomValue, useSetAtom } from 'jotai';
 import type { Store } from 'jotai/vanilla/store';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  episodeProgressRevisionAtom,
+  type EpisodePlayIntent,
+} from './application/episode-progress';
 import { dispatchKey } from './application/keyboard';
 import type { AppRuntime } from './application/runtime';
 import type { CommandId } from './commands';
@@ -24,6 +28,7 @@ import {
 } from './db/queries';
 import { episodeToTrack, mediaKey, parseYouTubeVideoId } from './providers/media';
 import type { PlaybackSourcePreference, Track } from './providers/types';
+import type { Podcast } from './providers/podcast-types';
 import {
   catalogFrameAtom,
   catalogIndexAtom,
@@ -34,14 +39,22 @@ import {
 import { configAtom } from './store/config';
 import { favoritesAtom, favoritesSetAtom, historyAtom } from './store/library';
 import { lyricsDataAtom, lyricsVisibleAtom, translationEnabledAtom } from './store/lyrics';
-import { playerErrorAtom, playerPlaybackAtom, playerStateAtom } from './store/player';
+import {
+  playerErrorAtom,
+  playerNoticeAtom,
+  playerPlaybackAtom,
+  playerPositionAtom,
+  playerStateAtom,
+  playerSeekableRequestAtom,
+  playerDurationAtom,
+} from './store/player';
 import {
   podcastEpisodesAtom,
   podcastSearchResultsAtom,
   selectedPodcastAtom,
   subscribedFeedsAtom,
 } from './store/podcast';
-import { queueEntriesAtom } from './store/queue';
+import { queueEntriesAtom, queueSelectionIdAtom } from './store/queue';
 import {
   focusedPanelAtom,
   layoutAtom,
@@ -63,6 +76,7 @@ import {
 } from './store/ui';
 import { CatalogView } from './ui/CatalogView';
 import { CommandPalette } from './ui/CommandPalette';
+import { EpisodeBookmarks } from './ui/EpisodeBookmarks';
 import { Header } from './ui/Header';
 import { HelpOverlay } from './ui/HelpOverlay';
 import { Lyrics } from './ui/Lyrics';
@@ -70,7 +84,8 @@ import { nextLayout } from './ui/layouts';
 import { NowPlaying } from './ui/NowPlaying';
 import { QuitConfirm } from './ui/QuitConfirm';
 import { parseTimeInput, SeekInput } from './ui/SeekInput';
-import { Sidebar } from './ui/Sidebar';
+import { Sidebar, type View } from './ui/Sidebar';
+import { usePointerClicks } from './ui/usePointerClicks';
 import { SourcePicker } from './ui/SourcePicker';
 import { TrackList } from './ui/TrackList';
 import { Transcript } from './ui/Transcript';
@@ -79,10 +94,12 @@ import { TranslationLanguageInput } from './ui/TranslationLanguageInput';
 import { nextTheme } from './ui/themes';
 import { useTheme } from './ui/useTheme';
 import { usePresentation } from './ui/usePresentation';
-import { saveConfig } from './utils/config';
+import { type IconStyle, saveConfig } from './utils/config';
 import { formatTime } from './utils/format';
 import { Logger } from './utils/logger';
 import { searchTranscript } from './utils/transcript-search';
+
+const QUEUE_PREVIEW_SIZE = 5;
 
 interface AppProps {
   store: Store;
@@ -99,8 +116,9 @@ export function App({ store, runtime, onQuit }: AppProps): React.ReactNode {
 }
 
 function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
-  const { playback, player, search, lyrics, catalog, db } = runtime;
+  const { playback, player, search, lyrics, catalog, db, episodeProgress } = runtime;
   const podcastScrollRef = useRef<ScrollBoxRenderable>(null);
+  const searchInputRef = useRef<InputRenderable>(null);
   const p = usePresentation(podcastScrollRef);
 
   // UI state
@@ -143,14 +161,23 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   const searchQuery = useAtomValue(searchQueryAtom);
   const setSearchQuery = useSetAtom(searchQueryAtom);
   const suggestions = useAtomValue(searchSuggestionsAtom);
-  const setSuggestions = useSetAtom(searchSuggestionsAtom);
   const suggestionIdx = useAtomValue(suggestionSelectedIdxAtom);
   const setSuggestionIdx = useSetAtom(suggestionSelectedIdxAtom);
   const suggestionsVisible = useAtomValue(suggestionsVisibleAtom);
-  const setSuggestionsVisible = useSetAtom(suggestionsVisibleAtom);
 
   // Queue state
   const queueEntries = useAtomValue(queueEntriesAtom);
+  const queueSelectionId = useAtomValue(queueSelectionIdAtom);
+  const queueIndex = Math.max(
+    0,
+    queueEntries.findIndex((entry) => entry.entryId === queueSelectionId),
+  );
+  const queueTracks = useMemo(() => queueEntries.map((entry) => entry.track), [queueEntries]);
+  const queueRowIds = useMemo(() => queueEntries.map((entry) => entry.entryId), [queueEntries]);
+  const previewTracks = useMemo(() => queueTracks.slice(0, QUEUE_PREVIEW_SIZE), [queueTracks]);
+  const hasQueuePane = layout === 'split' || layout === 'wide';
+  const queuePaneFocused = hasQueuePane && focusedPanel === 'sidebar';
+  const isQueue = section === 'music' && musicView === 'queue';
 
   // Library state
   const favoritesSet = useAtomValue(favoritesSetAtom);
@@ -179,9 +206,9 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
 
   // Local UI state
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const visibleSelectedIndex = isCatalog ? catalogIndex : selectedIndex;
+  const visibleSelectedIndex = isCatalog ? catalogIndex : isQueue ? queueIndex : selectedIndex;
   const [episodePageSize, setEpisodePageSize] = useState(50);
-  const searchInputRef = useRef<InputRenderable>(null);
+  const clickScope = `${layout}:${section}:${section === 'music' ? musicView : podcastView}`;
   const focusTransitionRef = useRef(false);
   useEffect(() => {
     focusTransitionRef.current = store.get(focusedPanelAtom) !== focusedPanel;
@@ -208,25 +235,38 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   );
   const hasMoreEpisodes = podcastEpisodes.length > episodePageSize;
 
+  const searchTracks = searchResults?.tracks;
   const mainTracks: Track[] = useMemo(() => {
     if (section === 'podcast') {
       return podcastView === 'episodes' ? episodesAsTracks : [];
     }
-    if (musicView === 'queue') return queueEntries.map((entry) => entry.track);
+    if (musicView === 'queue') return queueTracks;
     if (musicView === 'library') return favorites;
     if (musicView === 'explore') return history;
     if (musicView === 'catalog') return [];
-    return searchResults?.tracks ?? [];
+    return searchTracks ?? [];
   }, [
     section,
     podcastView,
     episodesAsTracks,
     musicView,
-    queueEntries,
+    queueTracks,
     favorites,
     history,
-    searchResults,
+    searchTracks,
   ]);
+  const trackNotesAtom = useMemo(
+    () =>
+      atom((get) => {
+        get(episodeProgressRevisionAtom);
+        const summaries = episodeProgress.summaries(mainTracks);
+        return summaries.size === 0
+          ? undefined
+          : mainTracks.map((track) => summaries.get(mediaKey(track)));
+      }),
+    [episodeProgress, mainTracks],
+  );
+  const trackNotes = useAtomValue(trackNotesAtom);
 
   // Items visible in the main panel — unified for navigation
   const podcastListItems =
@@ -235,6 +275,11 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         ? podcastSearchResults
         : subscribedFeeds
       : [];
+  const podcastClicks = usePointerClicks(clickScope, {
+    context: podcastListItems.length ? podcastListItems : null,
+    active: focusedPanel === 'main',
+    scrollRef: podcastScrollRef,
+  });
   const visibleListLength = !mainListVisible
     ? 0
     : isCatalog
@@ -244,10 +289,10 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         : mainTracks.length;
 
   useEffect(() => {
-    if (!isCatalog && mainListVisible) {
+    if (!isCatalog && !isQueue && mainListVisible) {
       setSelectedIndex((index) => Math.min(index, Math.max(0, visibleListLength - 1)));
     }
-  }, [isCatalog, mainListVisible, visibleListLength]);
+  }, [isCatalog, isQueue, mainListVisible, visibleListLength]);
 
   const subscribedFeedUrls = useMemo(
     () => new Set(subscribedFeeds.map((feed) => feed.feedUrl)),
@@ -291,9 +336,30 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     }
   };
 
-  // -- Keyboard actions --
+  // -- Shared keyboard and pointer actions --
+
+  const hasFocusedQueuePane = () => {
+    const currentLayout = store.get(layoutAtom);
+    return (
+      (currentLayout === 'split' || currentLayout === 'wide') &&
+      store.get(focusedPanelAtom) === 'sidebar'
+    );
+  };
+
+  const selectedQueueEntry = () => {
+    const entries = store.get(queueEntriesAtom);
+    const entryId = store.get(queueSelectionIdAtom);
+    const index = entries.findIndex((entry) => entry.entryId === entryId);
+    return entries[
+      index >= 0 &&
+      (!hasFocusedQueuePane() || store.get(layoutAtom) !== 'wide' || index < QUEUE_PREVIEW_SIZE)
+        ? index
+        : 0
+    ];
+  };
 
   const selectedTrack = (): Track | null => {
+    if (hasFocusedQueuePane()) return selectedQueueEntry()?.track ?? null;
     if (!mainListVisible || store.get(focusedPanelAtom) !== 'main') return null;
     if (
       store.get(sectionAtom) !== section ||
@@ -305,8 +371,33 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       const selection = store.get(catalogSelectionAtom);
       return selection?.kind === 'track' ? selection.track : null;
     }
-    return mainTracks[selectedIndex] ?? null;
+    if (isQueue) return selectedQueueEntry()?.track ?? null;
+    return mainTracks[visibleSelectedIndex] ?? null;
   };
+
+  const episodeSelection = (): { track: Track; entryId: string | null } | null => {
+    const selected = selectedTrack();
+    if (selected?.source?.kind === 'podcast') {
+      return {
+        track: selected,
+        entryId: isQueue || hasFocusedQueuePane() ? (selectedQueueEntry()?.entryId ?? null) : null,
+      };
+    }
+    const target = store.get(playerPlaybackAtom);
+    if (target?.track.source?.kind !== 'podcast') return null;
+    return {
+      track: target.track,
+      entryId: target.origin.kind === 'queue' ? target.origin.entryId : null,
+    };
+  };
+
+  const playEpisode = (
+    selection: { track: Track; entryId: string | null },
+    intent: EpisodePlayIntent,
+  ): Promise<void> =>
+    selection.entryId === null
+      ? playback.playDirect(selection.track, intent)
+      : playback.playQueueEntry(selection.entryId, intent);
 
   const catalogReturnTo = () => {
     if (musicView === 'catalog') return undefined;
@@ -348,23 +439,55 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     setFocusedPanel(panel);
   };
 
-  const clearSuggestions = () => {
-    setSuggestions([]);
-    setSuggestionsVisible(false);
-    setSuggestionIdx(-1);
-  };
-
   const submitSearch = (query: string) => {
+    const section = store.get(sectionAtom);
     if (section === 'music') catalog.close();
     setSearchQuery(query);
-    clearSuggestions();
     setFocus('main');
     setSelectedIndex(0);
     void search.search(query, section);
   };
 
+  const selectSidebarView = (view: View) => {
+    if (store.get(sectionAtom) === 'music') {
+      if (view === 'catalog' || view === 'episodes' || view === 'feeds') return;
+      if (view === store.get(musicViewAtom)) return;
+      catalog.close();
+      setMusicView(view);
+      refreshLibraryView(view);
+    } else {
+      if (view !== 'search' && view !== 'episodes' && view !== 'feeds') return;
+      if (view === store.get(podcastViewAtom)) return;
+      setPodcastView(view);
+    }
+    setSelectedIndex(0);
+  };
+
+  const navigateQueue = (direction: 'up' | 'down' | 'first' | 'last') => {
+    const entries = store.get(queueEntriesAtom);
+    const length =
+      hasFocusedQueuePane() && store.get(layoutAtom) === 'wide'
+        ? Math.min(QUEUE_PREVIEW_SIZE, entries.length)
+        : entries.length;
+    if (length === 0) return;
+    const entryId = selectedQueueEntry()?.entryId;
+    const index = entries.findIndex((entry) => entry.entryId === entryId);
+    const next =
+      direction === 'down'
+        ? Math.min(index + 1, length - 1)
+        : direction === 'up'
+          ? Math.max(index - 1, 0)
+          : direction === 'first'
+            ? 0
+            : length - 1;
+    store.set(queueSelectionIdAtom, entries[next].entryId);
+  };
   const navigate = (direction: 'up' | 'down' | 'first' | 'last') => {
-    if (focusedPanel === 'sidebar') {
+    if (hasFocusedQueuePane()) {
+      navigateQueue(direction);
+      return;
+    }
+    if (store.get(focusedPanelAtom) === 'sidebar') {
       if (section === 'music') {
         const views: MusicView[] = ['search', 'queue', 'library', 'explore'];
         const view =
@@ -378,12 +501,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
               : direction === 'first'
                 ? views[0]
                 : views[views.length - 1];
-        if (next && next !== musicView) {
-          catalog.close();
-          setMusicView(next);
-          setSelectedIndex(0);
-          refreshLibraryView(next);
-        }
+        selectSidebarView(next);
         return;
       }
       const views: PodcastView[] = ['search', 'feeds', 'episodes'];
@@ -396,10 +514,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
             : direction === 'first'
               ? views[0]
               : views[views.length - 1];
-      if (next && next !== podcastView) {
-        setPodcastView(next);
-        setSelectedIndex(0);
-      }
+      selectSidebarView(next);
       return;
     }
     if (isCatalog && mainListVisible) {
@@ -407,6 +522,10 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       return;
     }
     if (visibleListLength === 0) return;
+    if (isQueue) {
+      navigateQueue(direction);
+      return;
+    }
     setSelectedIndex((i) => {
       if (direction === 'down') return Math.min(i + 1, visibleListLength - 1);
       if (direction === 'up') return Math.max(i - 1, 0);
@@ -415,32 +534,36 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     });
   };
 
+  const openPodcast = (podcast: Podcast) => {
+    setSelectedIndex(0);
+    setEpisodePageSize(50);
+    runCommand(() => search.openPodcast(podcast));
+  };
+
+  const activateQueueEntry = (entryId: string) =>
+    runCommand(() => playback.playQueueEntry(entryId));
+
   const activateSelection = () => {
+    if (hasFocusedQueuePane() || (mainListVisible && isQueue)) {
+      const entry = selectedQueueEntry();
+      if (entry) activateQueueEntry(entry.entryId);
+      return;
+    }
     if (!mainListVisible) return;
     if (isCatalog) {
       const selection = store.get(catalogSelectionAtom);
-      if (selection?.kind === 'album')
-        void catalog.openAlbum(selection.album.id).catch(reportCommandError);
-      else if (selection?.kind === 'track') void playback.playDirect(selection.track);
+      if (selection?.kind === 'album') runCommand(() => catalog.openAlbum(selection.album.id));
+      else if (selection?.kind === 'track') runCommand(() => playback.playDirect(selection.track));
       return;
     }
     // Podcast: enter on a podcast item loads its episodes
     if (section === 'podcast' && podcastView !== 'episodes' && podcastListItems.length > 0) {
       const podcast = podcastListItems[selectedIndex];
-      if (podcast) {
-        setSelectedIndex(0);
-        setEpisodePageSize(50);
-        void search.openPodcast(podcast);
-      }
-      return;
-    }
-    if (section === 'music' && musicView === 'queue') {
-      const entry = queueEntries[selectedIndex];
-      if (entry) void playback.playQueueEntry(entry.entryId);
+      if (podcast) openPodcast(podcast);
       return;
     }
     const track = selectedTrack();
-    if (track) void playback.playDirect(track);
+    if (track) runCommand(() => playback.playDirect(track));
   };
 
   const submitOverlay = (submitted: Overlay) => {
@@ -454,10 +577,47 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         }
         break;
       }
+      case 'episode-bookmarks': {
+        const bookmark = submitted.bookmarks[submitted.selectedIdx];
+        if (!bookmark) return;
+        try {
+          if (submitted.editing === 'rename') {
+            episodeProgress.renameBookmark(submitted.track, bookmark.id, submitted.value);
+          } else if (submitted.editing === 'delete') {
+            episodeProgress.deleteBookmark(submitted.track, bookmark.id);
+          } else {
+            if (
+              submitted.entryId &&
+              !store.get(queueEntriesAtom).some((entry) => entry.entryId === submitted.entryId)
+            )
+              throw new Error('This episode is no longer in the queue.');
+            setOverlay(null);
+            void playEpisode(submitted, { kind: 'bookmark', bookmark }).catch(reportCommandError);
+            return;
+          }
+          const bookmarks = episodeProgress.listBookmarks(submitted.track);
+          const same = bookmarks.findIndex((item) => item.id === bookmark.id);
+          setOverlay({
+            ...submitted,
+            bookmarks,
+            selectedIdx:
+              same >= 0 ? same : Math.max(0, Math.min(submitted.selectedIdx, bookmarks.length - 1)),
+            editing: null,
+            value: '',
+            error: null,
+          });
+        } catch (error) {
+          setOverlay({
+            ...submitted,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
       case 'seek': {
         const seconds = parseTimeInput(submitted.value);
         if (seconds === null || seconds < 0) return; // invalid — stay open
-        void player.seekAbsolute(seconds);
+        seekTo(seconds);
         setOverlay(null);
         break;
       }
@@ -469,7 +629,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       }
       case 'transcript-search': {
         const match = transcriptMatches[submitted.selectedIdx];
-        if (match) void player.seekAbsolute(match.time);
+        if (match) seekTo(match.time);
         setOverlay(null);
         break;
       }
@@ -620,11 +780,11 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       return undefined;
     },
     favorite: () => {
-      if (focusedPanel !== 'main' || visibleListLength === 0) return;
+      if (!hasFocusedQueuePane() && (focusedPanel !== 'main' || visibleListLength === 0)) return;
       toggleFavorite();
     },
     'queue-add': () => {
-      if (focusedPanel !== 'main' || visibleListLength === 0) return;
+      if (!hasFocusedQueuePane() && (focusedPanel !== 'main' || visibleListLength === 0)) return;
       const track = selectedTrack();
       if (track) {
         playback.enqueue(track);
@@ -632,12 +792,11 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       }
     },
     'queue-remove': () => {
-      if (focusedPanel !== 'main' || section !== 'music' || musicView !== 'queue') return;
-      const entry = queueEntries[selectedIndex];
+      if (!hasFocusedQueuePane() && (focusedPanel !== 'main' || !isQueue || !mainListVisible))
+        return;
+      const entry = selectedQueueEntry();
       if (!entry) return;
-      void playback.remove(entry.entryId);
-      setSelectedIndex((i) => Math.min(i, Math.max(0, queueEntries.length - 2)));
-      Logger.info(`Removed from queue at index ${selectedIndex}`);
+      return playback.remove(entry.entryId);
     },
     'podcast-search': () => {
       setSection('podcast');
@@ -690,6 +849,34 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       const enabling = !translationEnabled;
       setTranslationEnabled(enabling);
       if (enabling) setLyricsVisible(true);
+    },
+    'episode-resume': () => {
+      const selection = episodeSelection();
+      if (selection) return playEpisode(selection, { kind: 'resume' });
+    },
+    'episode-start': () => {
+      const selection = episodeSelection();
+      if (selection) return playEpisode(selection, { kind: 'start' });
+    },
+    'episode-bookmark-add': () => {
+      const target = store.get(playerPlaybackAtom);
+      if (target?.track.source?.kind !== 'podcast') return;
+      const label = `Bookmark at ${formatTime(store.get(playerPositionAtom))}`;
+      const saved = episodeProgress.addBookmark(label, target.requestId);
+      store.set(playerNoticeAtom, `Bookmark saved at ${formatTime(saved.positionMs / 1000)}`);
+    },
+    'episode-bookmarks': () => {
+      const selection = episodeSelection();
+      if (!selection) return;
+      setOverlay({
+        kind: 'episode-bookmarks',
+        ...selection,
+        bookmarks: episodeProgress.listBookmarks(selection.track),
+        selectedIdx: 0,
+        editing: null,
+        value: '',
+        error: null,
+      });
     },
     'source-selected': () => {
       const track = selectedTrack();
@@ -744,6 +931,13 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       if (isCatalog && mainListVisible && focusedPanel === 'main') return catalog.queueAlbum();
     },
     'toggle-ascii': () => toggleDisplay('ascii'),
+    'toggle-icon-style': () => {
+      const current = store.get(configAtom);
+      const iconStyle: IconStyle = current.iconStyle === 'nerd-font' ? 'unicode' : 'nerd-font';
+      const next = { ...current, iconStyle };
+      saveConfig(next);
+      setConfig(next);
+    },
     'toggle-reduced-motion': () => toggleDisplay('reducedMotion'),
     'toggle-spectrum': () => toggleDisplay('spectrumEnabled'),
     'set-translation-language': () => setOverlay({ kind: 'translation-language', value: '' }),
@@ -754,13 +948,26 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     },
   };
 
-  const executeCommand = (id: CommandId): void => {
+  const runCommand = (action: () => void | Promise<void>): void => {
     try {
-      const result = commandHandlers[id]();
+      const result = action();
       if (result instanceof Promise) result.catch(reportCommandError);
     } catch (err) {
       reportCommandError(err);
     }
+  };
+  const executeCommand = (id: CommandId): void => runCommand(commandHandlers[id]);
+
+  const seekTo = (seconds: number, requestId?: number): void => {
+    if (requestId !== undefined) {
+      if (store.get(overlayAtom)) return;
+      if (store.get(playerPlaybackAtom)?.requestId !== requestId) return;
+      if (store.get(playerSeekableRequestAtom) !== requestId) return;
+      const duration = store.get(playerDurationAtom);
+      if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(seconds)) return;
+      seconds = Math.min(duration, Math.max(0, seconds));
+    }
+    runCommand(() => player.seekAbsolute(seconds));
   };
 
   // -- Global keybindings: the sole registration, forwarding the dispatcher --
@@ -781,12 +988,15 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       {
         overlay: store.get(overlayAtom),
         focusedPanel: store.get(focusedPanelAtom),
+        queuePane: hasFocusedQueuePane(),
         section: store.get(sectionAtom),
         musicView: store.get(musicViewAtom),
         podcastView: store.get(podcastViewAtom),
         catalogKind:
           mainListVisible && isCatalog ? (store.get(catalogFrameAtom)?.kind ?? null) : null,
-        hasSelection: visibleListLength > 0,
+        hasSelection: hasFocusedQueuePane()
+          ? store.get(queueEntriesAtom).length > 0
+          : visibleListLength > 0,
         hasTranscript,
         transcriptMatchCount: transcriptMatches.length,
         suggestions: suggestionsVisible ? suggestions : [],
@@ -802,7 +1012,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         activateSelection,
         changeCatalogTab: (direction) => catalog.changeTab(direction),
         setSuggestionIndex: setSuggestionIdx,
-        clearSuggestions,
+        clearSuggestions: search.dismissSuggestions,
         submitSearch,
         submitOverlay,
       },
@@ -815,6 +1025,57 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   const ACCENT = t.accent;
   const DIM = t.dim;
   const TEXT_FG = t.fg;
+
+  const canClick = () => !store.get(overlayAtom) && store.get(layoutAtom) === layout;
+  const canClickMain = () =>
+    canClick() &&
+    mainListVisible &&
+    store.get(sectionAtom) === section &&
+    (section === 'music'
+      ? store.get(musicViewAtom) === musicView
+      : store.get(podcastViewAtom) === podcastView) &&
+    (isCatalog || !store.get(searchLoadingAtom));
+
+  const clickQueueRow = (index: number, activate: boolean, auxiliary: boolean) => {
+    if (auxiliary ? !canClick() : !canClickMain()) return;
+    const entry = queueEntries[index];
+    // The row owns its rendered entry ID. Never play the new occupant of
+    // a position whose old hit target was just removed.
+    if (!entry || store.get(queueEntriesAtom) !== queueEntries) return;
+    setFocus(auxiliary ? 'sidebar' : 'main');
+    store.set(queueSelectionIdAtom, entry.entryId);
+    if (activate) activateQueueEntry(entry.entryId);
+  };
+
+  const clickTrackRow = (index: number, activate: boolean) => {
+    if (isQueue) {
+      clickQueueRow(index, activate, false);
+      return;
+    }
+    if (!canClickMain()) return;
+    const track = mainTracks[index];
+    const stale =
+      section === 'podcast'
+        ? store.get(podcastEpisodesAtom) !== podcastEpisodes
+        : musicView === 'library'
+          ? store.get(favoritesAtom) !== favorites
+          : musicView === 'explore'
+            ? store.get(historyAtom) !== history
+            : store.get(searchResultsAtom)?.tracks !== searchTracks;
+    if (!track || stale) return;
+    setFocus('main');
+    setSelectedIndex(index);
+    if (activate) runCommand(() => playback.playDirect(track));
+  };
+
+  const nowPlaying = (
+    <NowPlaying
+      onCommand={(id) => {
+        if (canClick()) executeCommand(id);
+      }}
+      onSeek={seekTo}
+    />
+  );
 
   // -- Reusable JSX fragments --
   const resultCount = mainTracks.length;
@@ -850,24 +1111,39 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
 
   const podcastListJsx =
     podcastListItems.length > 0 ? (
-      <scrollbox ref={podcastScrollRef} {...p.scrollbarProps}>
+      <scrollbox ref={podcastScrollRef} onMouseScroll={podcastClicks.clear} {...p.scrollbarProps}>
         {podcastListItems.map((podcast, i) => {
           const selected = i === selectedIndex;
           return (
             <box
-              key={podcast.id}
+              key={podcast.feedUrl}
               id={`podcast-row-${i}`}
               flexDirection="column"
               backgroundColor={selected ? t.selection : undefined}
               paddingLeft={1}
               paddingRight={1}
+              onMouse={podcastClicks.bind(
+                podcast.feedUrl,
+                (activate) => {
+                  if (!canClickMain()) return;
+                  const current =
+                    podcastView === 'search'
+                      ? store.get(podcastSearchResultsAtom)
+                      : store.get(subscribedFeedsAtom);
+                  if (current !== podcastListItems) return;
+                  setFocus('main');
+                  setSelectedIndex(i);
+                  if (activate) openPodcast(podcast);
+                },
+                true,
+              )}
             >
               <box flexDirection="row">
                 <text
                   fg={selected ? t.accent : t.dim}
                   attributes={selected ? TextAttributes.BOLD : 0}
                 >
-                  {String(i + 1).padStart(2, ' ')} {selected ? p.text('\u25b8 ') : '  '}
+                  {String(i + 1).padStart(2, ' ')} {selected ? `${p.icon('selected')} ` : '  '}
                 </text>
                 <text
                   fg={selected ? t.accent : t.fg}
@@ -878,11 +1154,11 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
                   {podcast.title}
                 </text>
                 {subscribedFeedUrls.has(podcast.feedUrl) && (
-                  <text fg={t.green}>{p.text(' \u2713')}</text>
+                  <text fg={t.green}> {p.icon('check')}</text>
                 )}
               </box>
               <box flexDirection="row">
-                <text fg={selected ? t.dim : t.dim}>
+                <text fg={t.dim}>
                   {'      '}
                   {podcast.author}
                 </text>
@@ -895,17 +1171,36 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
 
   const trackListJsx = isCatalog ? (
     <CatalogView
+      key={clickScope}
       focused={focusedPanel === 'main'}
       playingTrackId={playbackTarget?.track.id}
       favoritesSet={favoritesSet}
+      onTabClick={(frameId, tab) => {
+        if (!canClickMain() || store.get(catalogFrameAtom)?.frameId !== frameId) return;
+        setFocus('main');
+        catalog.changeTab(tab);
+      }}
+      onRowClick={(frameId, items, index, activate) => {
+        const frame = store.get(catalogFrameAtom);
+        if (!canClickMain() || !frame || frame.frameId !== frameId) return;
+        const current = frame.kind === 'album' ? frame.tracks.items : frame[frame.activeTab].items;
+        if (current !== items || !items[index]) return;
+        setFocus('main');
+        catalog.navigate(index);
+        if (activate) activateSelection();
+      }}
     />
   ) : mainTracks.length > 0 ? (
     <TrackList
+      key={clickScope}
+      rowIds={isQueue ? queueRowIds : undefined}
+      onRowClick={clickTrackRow}
       tracks={mainTracks}
       focused={focusedPanel === 'main'}
       selectedIndex={visibleSelectedIndex}
-      playingIndex={listPlayingIndex}
-      showRemoveHint={section === 'music' && musicView === 'queue'}
+      playingIndex={isQueue ? queuePlayingIndex : listPlayingIndex}
+      showRemoveHint={isQueue}
+      rowNotes={trackNotes}
     />
   ) : (
     <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={1}>
@@ -914,6 +1209,14 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     </box>
   );
 
+  const listContent =
+    searchLoading && !isCatalog ? (
+      <box paddingLeft={1} paddingTop={1}>
+        <text fg={DIM}>Searching...</text>
+      </box>
+    ) : (
+      (podcastListJsx ?? trackListJsx)
+    );
   const isVertical = layout === 'vertical';
   const mainPanel = (
     <box flexGrow={1} flexDirection={isVertical ? 'column' : 'row'}>
@@ -929,15 +1232,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         borderColor={focusedPanel === 'main' ? ACCENT : DIM}
         title={viewTitle}
       >
-        {searchLoading && !isCatalog ? (
-          <box paddingLeft={1} paddingTop={1}>
-            <text fg={DIM}>Searching...</text>
-          </box>
-        ) : section === 'podcast' && podcastListJsx ? (
-          podcastListJsx
-        ) : (
-          trackListJsx
-        )}
+        {listContent}
       </box>
       {/* Lyrics/Transcript: remaining space */}
       {lyricsVisible && (section === 'podcast' ? <Transcript /> : <Lyrics />)}
@@ -945,7 +1240,17 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   );
 
   const sidebarJsx = (
-    <Sidebar focused={focusedPanel === 'sidebar'} section={section} activeView={activeView} />
+    <Sidebar
+      focused={focusedPanel === 'sidebar'}
+      section={section}
+      activeView={activeView}
+      onViewClick={(view) => {
+        if (!canClick() || store.get(sectionAtom) !== section) return;
+        search.dismissSuggestions();
+        setFocus('sidebar');
+        selectSidebarView(view);
+      }}
+    />
   );
 
   const headerJsx = (
@@ -955,15 +1260,38 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       section={section}
       query={searchQuery}
       onInput={(value) => {
+        // OpenTUI also emits input when React writes the submitted query.
+        if (value === store.get(searchQueryAtom)) return;
         setSearchQuery(value);
         search.suggest(value);
       }}
       onFocusedChange={(focused) => {
-        if (focused) setFocusedPanel('search');
+        if (!focused) return;
+        if (store.get(overlayAtom)) {
+          searchInputRef.current?.blur();
+          return;
+        }
+        setFocusedPanel('search');
       }}
       suggestions={suggestions}
       suggestionIdx={suggestionIdx}
       suggestionsVisible={suggestionsVisible}
+      onSectionClick={(next) => {
+        if (!canClick()) return;
+        search.dismissSuggestions();
+        setFocus('main');
+        executeCommand(next === 'music' ? 'section-music' : 'section-podcast');
+      }}
+      onSuggestionClick={(query) => {
+        if (
+          canClick() &&
+          store.get(sectionAtom) === section &&
+          store.get(suggestionsVisibleAtom) &&
+          store.get(searchSuggestionsAtom) === suggestions &&
+          suggestions.includes(query)
+        )
+          submitSearch(query);
+      }}
     />
   );
 
@@ -973,7 +1301,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       {/* Focus layout: centered now-playing only */}
       {layout === 'focus' ? (
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
-          <NowPlaying />
+          {nowPlaying}
           <text fg={DIM}>
             [space] pause [n/p] next/prev [ctrl+l] layout [ctrl+t] theme [ctrl+q] quit
           </text>
@@ -989,23 +1317,23 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
             /* Wide: large now playing + queue preview below */
             <box flexGrow={1} flexDirection="column">
               <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
-                <NowPlaying />
+                {nowPlaying}
               </box>
               <box
                 border
                 borderStyle="rounded"
                 {...p.borderProps}
-                borderColor={DIM}
+                borderColor={queuePaneFocused ? ACCENT : DIM}
                 title="Up Next"
                 height={8}
               >
                 <TrackList
-                  tracks={queueEntries.slice(0, 5).map((entry) => entry.track)}
-                  focused={false}
-                  selectedIndex={-1}
-                  playingIndex={
-                    queuePlayingIndex >= 0 && queuePlayingIndex < 5 ? queuePlayingIndex : -1
-                  }
+                  tracks={previewTracks}
+                  rowIds={queueRowIds}
+                  onRowClick={(index, activate) => clickQueueRow(index, activate, true)}
+                  focused={queuePaneFocused}
+                  selectedIndex={queueIndex < previewTracks.length ? queueIndex : 0}
+                  playingIndex={queuePlayingIndex < previewTracks.length ? queuePlayingIndex : -1}
                 />
               </box>
             </box>
@@ -1022,9 +1350,11 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
                 title="Queue"
               >
                 <TrackList
-                  tracks={queueEntries.map((entry) => entry.track)}
-                  focused={focusedPanel === 'sidebar'}
-                  selectedIndex={activeView === 'queue' ? selectedIndex : -1}
+                  tracks={queueTracks}
+                  rowIds={queueRowIds}
+                  onRowClick={(index, activate) => clickQueueRow(index, activate, true)}
+                  focused={queuePaneFocused}
+                  selectedIndex={queueIndex}
                   playingIndex={queuePlayingIndex}
                   showRemoveHint={true}
                 />
@@ -1034,7 +1364,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
           ) : layout === 'minimal' ? (
             /* Minimal: track list only */
             <box flexGrow={1} flexDirection="column">
-              {trackListJsx}
+              {listContent}
             </box>
           ) : layout === 'vertical' ? (
             /* Vertical: header + full-width main + footer, no sidebar */
@@ -1050,90 +1380,115 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
           )}
 
           {/* Now Playing footer — all except focus and wide */}
-          {layout !== 'wide' && <NowPlaying />}
+          {layout !== 'wide' && nowPlaying}
         </>
       )}
 
       {/* Overlays — at most one is active */}
-      {overlay?.kind === 'help' && <HelpOverlay />}
-      {overlay?.kind === 'command-palette' && (
-        <CommandPalette
-          filter={overlay.filter}
-          selectedIdx={overlay.selectedIdx}
-          onFilterChange={(value) =>
-            setOverlay({ kind: 'command-palette', filter: value, selectedIdx: 0 })
-          }
-        />
-      )}
-      <QuitConfirm visible={overlay?.kind === 'quit-confirm'} />
-      {overlay?.kind === 'source-picker' && (
-        <SourcePicker overlay={overlay} onChange={setOverlay} />
-      )}
-      {overlay?.kind === 'seek' && (
-        <SeekInput value={overlay.value} onInput={(value) => setOverlay({ kind: 'seek', value })} />
-      )}
-      {overlay?.kind === 'transcript-url' && (
-        <TranscriptUrlInput
-          value={overlay.value}
-          onInput={(value) => setOverlay({ kind: 'transcript-url', value })}
-        />
-      )}
-      {overlay?.kind === 'translation-language' && (
-        <TranslationLanguageInput
-          value={overlay.value}
-          currentLang={config.translationLanguage}
-          onInput={(value) => setOverlay({ kind: 'translation-language', value })}
-        />
-      )}
-      {overlay?.kind === 'transcript-search' && (
+      {overlay && (
         <box
           position="absolute"
-          bottom={3}
-          left={1}
-          right={1}
-          height={Math.min(3 + Math.min(transcriptMatches.length, 5), 8)}
-          border
-          borderStyle="rounded"
-          {...p.borderProps}
-          borderColor={t.accent}
-          backgroundColor={t.bg}
-          flexDirection="column"
-          paddingLeft={1}
-          paddingRight={1}
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          zIndex={10}
+          onMouse={(event) => event.stopPropagation()}
         >
-          <box flexDirection="row">
-            <text fg={t.accent} attributes={TextAttributes.BOLD}>
-              Find:{' '}
-            </text>
-            <input
-              focused
-              value={transcriptQuery}
-              onInput={
-                ((value: string) => {
-                  setOverlay({ kind: 'transcript-search', query: value, selectedIdx: 0 });
-                }) as never
+          {overlay?.kind === 'help' && <HelpOverlay />}
+          {overlay?.kind === 'command-palette' && (
+            <CommandPalette
+              filter={overlay.filter}
+              selectedIdx={overlay.selectedIdx}
+              onFilterChange={(value) =>
+                setOverlay({ kind: 'command-palette', filter: value, selectedIdx: 0 })
               }
             />
-            {transcriptMatches.length > 0 && (
-              <text fg={t.dim}>
-                {' '}
-                ({overlay.selectedIdx + 1}/{transcriptMatches.length})
-              </text>
-            )}
-          </box>
-          {transcriptMatches.slice(0, 5).map((match, i) => (
-            <text
-              key={match.idx}
-              fg={i === overlay.selectedIdx ? t.accent : t.dim}
-              attributes={i === overlay.selectedIdx ? TextAttributes.BOLD : 0}
-              truncate
+          )}
+          <QuitConfirm visible={overlay?.kind === 'quit-confirm'} />
+          {overlay?.kind === 'source-picker' && (
+            <SourcePicker overlay={overlay} onChange={setOverlay} />
+          )}
+          {overlay?.kind === 'episode-bookmarks' && (
+            <EpisodeBookmarks
+              overlay={overlay}
+              onInput={(value) => {
+                const current = store.get(overlayAtom);
+                if (current?.kind === 'episode-bookmarks' && current.editing === 'rename')
+                  setOverlay({ ...current, value, error: null });
+              }}
+            />
+          )}
+          {overlay?.kind === 'seek' && (
+            <SeekInput
+              value={overlay.value}
+              onInput={(value) => setOverlay({ kind: 'seek', value })}
+            />
+          )}
+          {overlay?.kind === 'transcript-url' && (
+            <TranscriptUrlInput
+              value={overlay.value}
+              onInput={(value) => setOverlay({ kind: 'transcript-url', value })}
+            />
+          )}
+          {overlay?.kind === 'translation-language' && (
+            <TranslationLanguageInput
+              value={overlay.value}
+              currentLang={config.translationLanguage}
+              onInput={(value) => setOverlay({ kind: 'translation-language', value })}
+            />
+          )}
+          {overlay?.kind === 'transcript-search' && (
+            <box
+              position="absolute"
+              bottom={3}
+              left={1}
+              right={1}
+              height={Math.min(3 + Math.min(transcriptMatches.length, 5), 8)}
+              border
+              borderStyle="rounded"
+              {...p.borderProps}
+              borderColor={t.accent}
+              backgroundColor={t.bg}
+              flexDirection="column"
+              paddingLeft={1}
+              paddingRight={1}
             >
-              {i === overlay.selectedIdx ? p.text(' \u25b8 ') : '   '}[{formatTime(match.time)}]{' '}
-              {match.text}
-            </text>
-          ))}
-          {transcriptMatches.length === 0 && transcriptQuery.trim() && (
-            <text fg={t.dim}> No matches</text>
+              <box flexDirection="row">
+                <text fg={t.accent} attributes={TextAttributes.BOLD}>
+                  Find:{' '}
+                </text>
+                <input
+                  focused
+                  value={transcriptQuery}
+                  onInput={
+                    ((value: string) => {
+                      setOverlay({ kind: 'transcript-search', query: value, selectedIdx: 0 });
+                    }) as never
+                  }
+                />
+                {transcriptMatches.length > 0 && (
+                  <text fg={t.dim}>
+                    {' '}
+                    ({overlay.selectedIdx + 1}/{transcriptMatches.length})
+                  </text>
+                )}
+              </box>
+              {transcriptMatches.slice(0, 5).map((match, i) => (
+                <text
+                  key={match.idx}
+                  fg={i === overlay.selectedIdx ? t.accent : t.dim}
+                  attributes={i === overlay.selectedIdx ? TextAttributes.BOLD : 0}
+                  truncate
+                >
+                  {i === overlay.selectedIdx ? ` ${p.icon('selected')} ` : '   '}[
+                  {formatTime(match.time)}] {match.text}
+                </text>
+              ))}
+              {transcriptMatches.length === 0 && transcriptQuery.trim() && (
+                <text fg={t.dim}> No matches</text>
+              )}
+            </box>
           )}
         </box>
       )}

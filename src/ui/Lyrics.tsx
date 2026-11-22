@@ -141,7 +141,7 @@ export function Lyrics() {
             const distance = currentIdx >= 0 ? Math.abs(i - currentIdx) : Infinity;
             const color = lineColor(distance, t);
             const isCurrent = i === currentIdx;
-            const marker = isCurrent ? `${p.text('♪')} ` : '  ';
+            const marker = isCurrent ? `${p.icon('music')} ` : '  ';
             const ts = `[${formatTimestamp(line.time)}]`;
 
             return (

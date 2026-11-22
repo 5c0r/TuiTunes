@@ -22,6 +22,7 @@ import {
   searchResultsAtom,
   searchSuggestionsAtom,
   sectionAtom,
+  suggestionSelectedIdxAtom,
   suggestionsVisibleAtom,
 } from '../../src/store/ui';
 import { createDeferredPodcasts, itunesSearchBody } from '../helpers/app';
@@ -307,6 +308,44 @@ test('suggest clears suggestions for short queries and podcast section', async (
     await controller.dispose();
   }
 });
+
+test.each(['music', 'podcast'] as const)(
+  '%s search dismisses visible suggestions and ignores a late response',
+  async (section) => {
+    const store = createStore();
+    const late = Promise.withResolvers<string[]>();
+    let signal: AbortSignal | undefined;
+    const controller = createSearchController(store, {
+      music: {
+        ...stubMusic(),
+        getSearchSuggestions: (_, requestSignal) => {
+          signal = requestSignal;
+          return late.promise; // A provider result can still arrive after abort.
+        },
+      },
+      podcasts: stubPodcasts(),
+    });
+    vi.useFakeTimers();
+    try {
+      store.set(searchSuggestionsAtom, ['previous']);
+      store.set(suggestionSelectedIdxAtom, 0);
+      store.set(suggestionsVisibleAtom, true);
+      controller.suggest('new query');
+      vi.advanceTimersByTime(250);
+
+      await controller.search('new query', section);
+      expect(signal?.aborted).toBe(true);
+      late.resolve(['too late']);
+      await Promise.resolve();
+      expect(store.get(searchSuggestionsAtom)).toEqual([]);
+      expect(store.get(suggestionSelectedIdxAtom)).toBe(-1);
+      expect(store.get(suggestionsVisibleAtom)).toBe(false);
+    } finally {
+      await controller.dispose();
+      vi.useRealTimers();
+    }
+  },
+);
 
 test('dispose cancels scheduled suggestions and discards late results', async () => {
   const queries: string[] = [];

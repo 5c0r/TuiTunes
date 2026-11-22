@@ -5,9 +5,11 @@ import {
   playerDurationAtom,
   playerErrorAtom,
   playerMuteAtom,
+  playerNoticeAtom,
   playerPlaybackAtom,
   playerPositionAtom,
   playerProcessIdentityAtom,
+  playerSeekableRequestAtom,
   playerSpeedAtom,
   playerStateAtom,
   playerVolumeAtom,
@@ -122,10 +124,41 @@ interface LoadJob {
   reject: (err: unknown) => void;
 }
 
+/** Origin of a request-bound seek intent. */
+type SeekOrigin =
+  /** Armed by PlayerLoadOptions.startPosition for a fresh load. */
+  | 'initial'
+  /** Armed by crash recovery from the live lastPosition. */
+  | 'recovery';
+
+/**
+ * A seek bound to one playback request: armed before its loadfile, applied
+ * at most once at that target's file-loaded commit, and retired only by the
+ * seek's success, its terminal failure, or supersession — never by a
+ * sampled zero reset. Readiness is published through
+ * playerSeekableRequestAtom (null while the seek is outstanding); the load
+ * command itself stays ACK-bound so playback never awaits an unbounded
+ * media load.
+ */
+interface SeekIntent {
+  requestId: number;
+  position: number;
+  origin: SeekOrigin;
+  /** userSeekSeq when armed: any later manual seek supersedes the intent. */
+  userSeekSeq: number;
+  /** Clamped target once dispatched; null while still armed. */
+  effectivePosition: number | null;
+}
+
 const RECOVERY_RETRY_DELAY_MS = 500;
 const RECOVERY_FLAP_WINDOW_MS = 5_000;
-/** Positions below this are not worth a recovery seek. */
+/** Positions below this are not worth a request-bound seek. */
 const RECOVERY_SEEK_MIN_POSITION = 2;
+/**
+ * A time-pos sample this close to (or past) the seek target proves the seek
+ * landed; anything lower while the seek is outstanding is pre-seek noise.
+ */
+const SEEK_SAMPLE_TOLERANCE = 0.75;
 /** Upper bound on remembered bindings; late duplicates stay ignorable either way. */
 const MAX_BINDINGS = 8;
 
@@ -141,6 +174,19 @@ function extractEndFact(event: MpvEvent): EndFact {
   };
 }
 
+/** A usable initial-start position: finite and worth a seek. */
+function isStartSeekPosition(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > RECOVERY_SEEK_MIN_POSITION;
+}
+
+/** m:ss (h:mm:ss past an hour) for resume notices. */
+function formatSeekPosition(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${h > 0 ? `${h}:` : ''}${h > 0 ? String(m).padStart(2, '0') : m}:${String(s).padStart(2, '0')}`;
+}
 /** mpv controls that live on the process, not on any one loaded file. */
 const GLOBAL_PROPERTIES: Record<string, true> = {
   pause: true,
@@ -178,8 +224,20 @@ export class PlayerController {
   private userPaused = false;
   private cachePaused = false;
 
-  /** Recovery-seek intent, executed only when its target finishes loading. */
-  private pendingSeek: { requestId: number; position: number } | null = null;
+  /**
+   * Request-bound seek intent (initial start or recovery resume), executed
+   * only when its own target's file-loaded commits.
+   */
+  private pendingSeek: SeekIntent | null = null;
+  /** Dispatched request-bound seek whose command has not settled yet. */
+  private activeSeek: SeekIntent | null = null;
+  /**
+   * Seekability of the active binding's file: true/false once observed,
+   * null while unknown (guarded IPC reads may resolve it at seek time).
+   */
+  private fileSeekable: boolean | null = null;
+  /** Bumped by every user-initiated seek; a request-bound seek yields to it. */
+  private userSeekSeq = 0;
   private pendingRecovery: Promise<void> | null = null;
   private recoveryAbort: AbortController | null = null;
   private lastRecoveryAttempt = 0;
@@ -265,12 +323,22 @@ export class PlayerController {
    * Ordinary play starts unpaused. `preservePause` (a source switch) leaves
    * mpv's global pause untouched across the loadfile so user pause changes
    * made during preparation or queued loading are preserved.
+   *
+   * `options.startPosition` (seconds) arms a request-bound initial seek:
+   * applied at most once after this target's file loads — clamped to the
+   * usable duration, skipped with a nonfatal notice when unseekable. The
+   * load itself stays ACK-bound; readiness is published through
+   * playerSeekableRequestAtom, which stays null until that seek has
+   * succeeded or terminally failed (a sampled zero reset never confirms).
    */
   async play(target: PlaybackTarget, options: PlayerLoadOptions = {}): Promise<void> {
     if (this._destroyed) throw new Error('PlayerController is destroyed');
 
+    // This intent supersedes any outstanding request-bound seek before the
+    // visible reset: the stale intent's late ACK must not touch this target.
+    this.fileSeekable = null;
+    this.dropSeekIntents();
     this.currentTarget = target;
-    this.pendingSeek = null;
     this.lastPosition = 0;
     this.fileActive = false;
     this.fileLoading = true;
@@ -281,6 +349,8 @@ export class PlayerController {
     // While loading, deriveState() reports buffering regardless of it.
     this.store.set(playerPlaybackAtom, target);
     this.store.set(playerErrorAtom, null);
+    this.store.set(playerNoticeAtom, null);
+    this.store.set(playerSeekableRequestAtom, null);
     this.store.set(playerPositionAtom, 0);
     this.store.set(playerDurationAtom, 0);
     this.deriveState();
@@ -293,10 +363,12 @@ export class PlayerController {
   }
 
   async seekRelative(seconds: number): Promise<void> {
+    this.userSeekSeq += 1;
     await this.ipc.seek(seconds, 'relative');
   }
 
   async seekAbsolute(seconds: number): Promise<void> {
+    this.userSeekSeq += 1;
     // Clamp to valid range
     const duration = this.store.get(playerDurationAtom);
     const clamped = Math.max(0, duration > 0 ? Math.min(seconds, duration) : seconds);
@@ -336,7 +408,8 @@ export class PlayerController {
 
   async stop(): Promise<void> {
     if (this._destroyed) return;
-    this.pendingSeek = null;
+    this.fileSeekable = null;
+    this.dropSeekIntents();
     this.pendingPauseReapply = false;
     this.clearNativeBindings();
     this.fileActive = false;
@@ -359,7 +432,8 @@ export class PlayerController {
   async destroy(): Promise<void> {
     if (this._destroyed) return;
     this._destroyed = true;
-    this.pendingSeek = null;
+    this.fileSeekable = null;
+    this.dropSeekIntents();
     this.pendingPauseReapply = false;
 
     // Abort and await any pending start/recovery before the final stop so a
@@ -391,6 +465,7 @@ export class PlayerController {
     this.store.set(playerPlaybackAtom, null);
     this.store.set(playerPositionAtom, 0);
     this.store.set(playerDurationAtom, 0);
+    this.store.set(playerSeekableRequestAtom, null);
     Logger.info('PlayerController destroyed');
   }
 
@@ -482,10 +557,14 @@ export class PlayerController {
     }
     if (this._destroyed || this.currentTarget !== target) return;
 
+    // Arm the request-bound seek BEFORE the command: a file-loaded that
+    // precedes the ACK can already consume the intent. Recovery (resume
+    // from the live lastPosition) wins over a stale initial start position,
+    // so an initial seek is never reapplied across a respawn.
     if (recovery && recovery.position > RECOVERY_SEEK_MIN_POSITION) {
-      // Armed before the command: a file-loaded that precedes the ACK can
-      // already consume the intent.
-      this.pendingSeek = { requestId: target.requestId, position: recovery.position };
+      this.armSeek(target, recovery.position, 'recovery');
+    } else if (isStartSeekPosition(options.startPosition)) {
+      this.armSeek(target, options.startPosition, 'initial');
     }
 
     this.inflightLoad = { target, epoch: this.epoch };
@@ -507,6 +586,8 @@ export class PlayerController {
   /** A failed load must not leave buffering state behind a newer intent. */
   private handleLoadFailure(job: LoadJob): void {
     if (this._destroyed || this.currentTarget !== job.target) return;
+    // The load never produced a file: its armed seek can never apply.
+    this.dropSeekIntents();
     this.fileLoading = false;
     this.deriveState();
   }
@@ -616,14 +697,186 @@ export class PlayerController {
       }
     }
 
-    // Execute a recovery-seek intent only for the target that just loaded.
-    const seek = this.pendingSeek;
-    if (seek && seek.requestId === binding.target.requestId) {
-      this.pendingSeek = null;
-      void this.ipc.seek(seek.position, 'absolute+exact').catch((err: unknown) => {
-        Logger.error(`Recovery seek failed: ${err}`);
-      });
+    // Execute the request-bound seek intent (initial start or recovery
+    // resume) only for the target that just loaded.
+    this.dispatchBoundSeek(binding);
+  }
+
+  // --- Internal: request-bound seeks ---
+
+  /**
+   * Arm a request-bound seek for a load that is about to command its
+   * loadfile. Any older undispatched intent is moot (superseded by this
+   * one) and is forgotten.
+   */
+  private armSeek(target: PlaybackTarget, position: number, origin: SeekOrigin): void {
+    this.dropPendingSeek();
+    this.pendingSeek = {
+      requestId: target.requestId,
+      position,
+      origin,
+      userSeekSeq: this.userSeekSeq,
+      effectivePosition: null,
+    };
+    if (origin === 'initial') {
+      // The intended position is the live resume point from the start: a
+      // crash before the seek lands must not recover to zero.
+      this.lastPosition = position;
     }
+  }
+
+  /** Forget an armed (undispatched) intent: it can never apply anymore. */
+  private dropPendingSeek(): void {
+    if (!this.pendingSeek) return;
+    this.pendingSeek = null;
+    this.updateSeekableRequest();
+  }
+
+  /**
+   * Forget every outstanding request-bound seek: a newer intent, a stop, or
+   * a new process epoch owns the pipeline now. A dispatched command's late
+   * ACK is inert (stale guards); nothing further can touch the next target.
+   */
+  private dropSeekIntents(): void {
+    this.dropPendingSeek();
+    this.activeSeek = null;
+    this.updateSeekableRequest();
+  }
+
+  /**
+   * Consume the armed request-bound seek for the binding that just
+   * committed — at most once per intent, never for another request's file.
+   * Returns whether an intent was dispatched.
+   */
+  private dispatchBoundSeek(binding: EntryBinding): boolean {
+    const intent = this.pendingSeek;
+    if (!intent || intent.requestId !== binding.target.requestId) return false;
+    this.pendingSeek = null;
+    this.activeSeek = intent;
+    void this.applyBoundSeek(intent, binding)
+      .catch((err: unknown) => {
+        Logger.error(`Request-bound seek failed: ${err}`);
+        if (this.seekIntentLive(intent, binding)) this.publishSeekNotice(intent.position, false);
+      })
+      .finally(() => {
+        if (this.activeSeek === intent) this.activeSeek = null;
+        this.updateSeekableRequest();
+      });
+    return true;
+  }
+
+  /**
+   * Execute a dispatched request-bound seek against the binding that just
+   * committed: clamp to the usable duration (guarded IPC read when not yet
+   * observed), skip with a nonfatal notice when the file is not seekable,
+   * and seek exactly once. Stale guards around every await keep a
+   * superseded intent's late reads or ACK from touching the next target,
+   * and a manual seek issued after the start always wins over this one.
+   */
+  private async applyBoundSeek(intent: SeekIntent, binding: EntryBinding): Promise<void> {
+    const seekSeq = intent.userSeekSeq;
+    let duration = this.store.get(playerDurationAtom);
+    if (!(duration > 0)) {
+      try {
+        const read = await this.ipc.getProperty('duration');
+        if (typeof read === 'number' && Number.isFinite(read) && read >= 0) duration = read;
+      } catch (err) {
+        // Unavailable/unreadable: seek unclamped rather than blocked.
+        Logger.debug(`Duration read for request-bound seek unavailable: ${err}`);
+      }
+    }
+
+    let seekable = this.fileSeekable;
+    if (seekable === null) {
+      try {
+        const read = await this.ipc.getProperty('seekable');
+        if (typeof read === 'boolean') seekable = read;
+        // A successful read is authoritative for the still-active binding
+        // unless a newer property observation landed meanwhile.
+        this.publishReadSeekability(binding, read);
+      } catch (err) {
+        Logger.debug(`Seekable read for request-bound seek unavailable: ${err}`);
+      }
+    }
+
+    if (!this.seekIntentLive(intent, binding)) return;
+
+    if (seekable === false) {
+      // Unseekable resume still plays — from the start, with a notice.
+      this.publishSeekNotice(intent.position, false);
+      return;
+    }
+
+    if (this.userSeekSeq !== seekSeq) {
+      // The user took over the position after the start: a stale
+      // request-bound seek must never override their manual seek.
+      return;
+    }
+
+    const position = duration > 0 ? Math.min(intent.position, duration) : intent.position;
+    intent.effectivePosition = position;
+    try {
+      await this.ipc.seek(position, 'absolute+exact');
+    } catch (err) {
+      if (!this.seekIntentLive(intent, binding)) return;
+      Logger.error(`Request-bound seek failed: ${err}`);
+      this.publishSeekNotice(position, false);
+      return;
+    }
+    if (!this.seekIntentLive(intent, binding) || this.userSeekSeq !== seekSeq) return;
+    this.publishSeekNotice(position, true);
+  }
+
+  /**
+   * Publish a guarded seekability read for the still-active binding, but
+   * only while no newer authoritative observation exists.
+   */
+  private publishReadSeekability(binding: EntryBinding, read: unknown): void {
+    if (this.fileSeekable !== null) return;
+    if (this.activeBinding() !== binding || binding.target !== this.currentTarget) return;
+    if (typeof read !== 'boolean') return;
+    this.fileSeekable = read;
+    this.updateSeekableRequest();
+  }
+
+  /** Whether a dispatched intent may still act for its binding and target. */
+  private seekIntentLive(intent: SeekIntent, binding: EntryBinding): boolean {
+    return (
+      !this._destroyed &&
+      this.activeSeek === intent &&
+      this.activeBinding() === binding &&
+      binding.target === this.currentTarget
+    );
+  }
+
+  /** Surface the outcome of an attempted request-bound resume (nonfatal). */
+  private publishSeekNotice(position: number, resumed: boolean): void {
+    const at = formatSeekPosition(position);
+    this.store.set(
+      playerNoticeAtom,
+      resumed ? `Resumed at ${at}` : `Could not resume at ${at} — playing from the start`,
+    );
+  }
+
+  /**
+   * Publish playerSeekableRequestAtom: exactly the committed target's
+   * requestId while its native binding is active, its file observed
+   * seekable, and no request-bound seek outstanding. Resets, target
+   * changes, EOF and disconnect clear it; recovery restores it only after
+   * rebinding plus seek.
+   */
+  private updateSeekableRequest(): void {
+    const binding = this.activeBinding();
+    const requestId =
+      binding !== null &&
+      binding.epoch === this.epoch &&
+      binding.target === this.currentTarget &&
+      this.fileSeekable === true &&
+      this.pendingSeek === null &&
+      this.activeSeek === null
+        ? binding.target.requestId
+        : null;
+    this.store.set(playerSeekableRequestAtom, requestId);
   }
 
   // --- Internal: IPC wiring ---
@@ -673,6 +926,7 @@ export class PlayerController {
   private markFileInactive(): void {
     this.fileActive = false;
     this.fileLoading = false;
+    this.updateSeekableRequest();
     this.deriveState();
   }
 
@@ -735,7 +989,13 @@ export class PlayerController {
       case 'time-pos':
         if (typeof value === 'number' && Number.isFinite(value)) {
           const position = Math.max(0, value);
-          this.lastPosition = position;
+          const intent = this.pendingSeek ?? this.activeSeek;
+          const seekTarget = intent ? (intent.effectivePosition ?? intent.position) : null;
+          if (seekTarget === null || position >= seekTarget - SEEK_SAMPLE_TOLERANCE) {
+            this.lastPosition = position;
+          }
+          // else: a pre-seek sample (the zero reset in particular) while a
+          // request-bound seek is outstanding is not confirmed playback.
           this.store.set(playerPositionAtom, position);
         }
         break;
@@ -748,6 +1008,12 @@ export class PlayerController {
         if (typeof value === 'boolean') {
           this.cachePaused = value;
           this.deriveState();
+        }
+        break;
+      case 'seekable':
+        if (typeof value === 'boolean') {
+          this.fileSeekable = value;
+          this.updateSeekableRequest();
         }
         break;
       case 'current-ao':
@@ -799,6 +1065,8 @@ export class PlayerController {
       case 'shutdown':
         Logger.warn('mpv shutdown event received');
         this.markFileInactive();
+        this.fileSeekable = null;
+        this.dropSeekIntents();
         this.clearNativeBindings();
         break;
     }
@@ -903,12 +1171,18 @@ export class PlayerController {
       this.bindings.delete(binding.entryId);
       return;
     }
+    // The ended file can no longer consume an armed seek — except through a
+    // redirect child, which inherits the binding and its intent.
+    if (fact.reason !== 'redirect' && this.pendingSeek?.requestId === binding.target.requestId) {
+      this.dropPendingSeek();
+    }
+    this.updateSeekableRequest();
 
     if (fact.reason === 'eof') {
       Logger.info('Track ended (EOF)');
       this.fileActive = false;
       this.fileLoading = false;
-      this.pendingSeek = null;
+      this.dropPendingSeek();
       this.deriveState(); // stopped; last track metadata stays visible
       this.bindings.delete(binding.entryId);
       for (const handler of [...this.trackEndHandlers]) {
@@ -926,7 +1200,7 @@ export class PlayerController {
       Logger.error(`mpv playback error: ${fileError}`);
       this.fileActive = false;
       this.fileLoading = false;
-      this.pendingSeek = null;
+      this.dropPendingSeek();
       this.store.set(playerErrorAtom, `Playback failed: ${fileError}`);
       this.deriveState();
       this.bindings.delete(binding.entryId);
@@ -974,7 +1248,7 @@ export class PlayerController {
     Logger.error('mpv redirect inserted an unownable playlist — stopping playback');
     this.fileActive = false;
     this.fileLoading = false;
-    this.pendingSeek = null;
+    this.dropPendingSeek();
     this.store.set(
       playerErrorAtom,
       'mpv redirected playback to an untrackable playlist — playback stopped',
@@ -1004,11 +1278,16 @@ export class PlayerController {
     this.epoch += 1;
     this.clearNativeBindings();
     this.inflightLoad = null;
+    this.fileSeekable = null;
+    // Every request-bound seek of the dead epoch is void; its pending load
+    // section (if any) settles as moot instead of hanging.
+    this.dropSeekIntents();
     // A pause-transfer intent belongs to the recovery of the epoch that
     // captured it; a new epoch's own recovery re-arms it when applicable.
     this.pendingPauseReapply = false;
     this.store.set(playerProcessIdentityAtom, null);
     this.store.set(playerAudioBackendAtom, null);
+    this.updateSeekableRequest();
   }
 
   private publishIdentity(handle: MpvProcessHandle): void {

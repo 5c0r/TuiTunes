@@ -13,20 +13,27 @@ import {
   translationEnabledAtom,
   lyricsTranslationAtom,
 } from '../../src/store/lyrics';
-import { playerPlaybackAtom } from '../../src/store/player';
-import type { Overlay } from '../../src/store/ui';
+import { playerPlaybackAtom, playerPositionAtom, playerStateAtom } from '../../src/store/player';
+import { layoutAtom, searchResultsAtom, type Overlay } from '../../src/store/ui';
+import { filterCommands } from '../../src/commands';
 import { CommandPalette } from '../../src/ui/CommandPalette';
 import { Header } from '../../src/ui/Header';
 import { HelpOverlay } from '../../src/ui/HelpOverlay';
 import { Lyrics } from '../../src/ui/Lyrics';
+import { EpisodeBookmarks } from '../../src/ui/EpisodeBookmarks';
+import { LAYOUT_ORDER } from '../../src/ui/layouts';
 import {
   ASCII_BORDER_CHARS,
+  ICONS,
   asciiText,
   borderPropsFor,
+  iconGlyph,
   scrollbarPropsFor,
   spinnerFramesFor,
+  toggleStateLabel,
   toggleStatusLabel,
   toggleStatusFor,
+  type IconName,
 } from '../../src/ui/presentation';
 import { QuitConfirm } from '../../src/ui/QuitConfirm';
 import { SeekInput } from '../../src/ui/SeekInput';
@@ -36,9 +43,10 @@ import { TrackList } from '../../src/ui/TrackList';
 import { Transcript } from '../../src/ui/Transcript';
 import { TranslationLanguageInput } from '../../src/ui/TranslationLanguageInput';
 import { usePresentation, type Presentation } from '../../src/ui/usePresentation';
-import { DEFAULT_CONFIG } from '../../src/utils/config';
+import { DEFAULT_CONFIG, type IconStyle } from '../../src/utils/config';
+import { makeTrack, renderTestApp } from '../helpers/app';
 
-const CHROME_GLYPHS = '▶⏸⟳⏹♪🎙♥⟲📋📜▸│—•·→⚠🔇🔊🔁🔂🔀━─●⣿✓↑↓';
+const CHROME_GLYPHS = '▶⏸⟳⏹⏮⏭♪🎙♥⟲📋📜▸✓↑↓›✕🔖⇄⌨│—•·→⚠🔇🔊🔁🔂🔀━─●⣿';
 
 function expectNoChromeGlyphs(frame: string): void {
   const offender = [...frame].find((ch) => CHROME_GLYPHS.includes(ch));
@@ -128,6 +136,69 @@ test('toggle status labels cover on, off and effectively-disabled', () => {
   expect(toggleStatusFor('toggle-spectrum', spectrumOnly)).toBe('on');
 });
 
+test('icon style toggle reports its effective mode and ASCII suppression', () => {
+  // New default and legacy fallback: Nerd Font is active unless opted out.
+  expect(DEFAULT_CONFIG.iconStyle).toBe('nerd-font');
+  expect(toggleStatusFor('toggle-icon-style', DEFAULT_CONFIG)).toBe('on');
+  expect(toggleStateLabel('toggle-icon-style', DEFAULT_CONFIG)).toBe('Nerd Font');
+
+  const unicode = { ...DEFAULT_CONFIG, iconStyle: 'unicode' as const };
+  expect(toggleStatusFor('toggle-icon-style', unicode)).toBe('off');
+  expect(toggleStateLabel('toggle-icon-style', unicode)).toBe('Unicode');
+
+  // ASCII keeps the saved preference while suppressing it.
+  const asciiNerd = { ...DEFAULT_CONFIG, ascii: true };
+  expect(toggleStatusFor('toggle-icon-style', asciiNerd)).toBe('suppressed');
+  expect(toggleStateLabel('toggle-icon-style', asciiNerd)).toBe('Nerd Font (inactive in ASCII)');
+  const asciiUnicode = { ...DEFAULT_CONFIG, ascii: true, iconStyle: 'unicode' as const };
+  expect(toggleStatusFor('toggle-icon-style', asciiUnicode)).toBe('suppressed');
+  expect(toggleStateLabel('toggle-icon-style', asciiUnicode)).toBe('Unicode (inactive in ASCII)');
+
+  // Other toggles keep their plain On/Off wording.
+  expect(toggleStateLabel('toggle-ascii', asciiNerd)).toBe('On');
+  expect(toggleStateLabel('toggle-spectrum', DEFAULT_CONFIG)).toBe('Off');
+});
+
+test('icon profile keeps ASCII fallbacks and Nerd Font glyphs disjoint', () => {
+  for (const name of Object.keys(ICONS) as IconName[]) {
+    const glyphs = ICONS[name];
+    expect(glyphs.unicode.length).toBeGreaterThan(0);
+    expect(glyphs.ascii.length).toBeGreaterThan(0);
+    expect(glyphs.nerdFont.length).toBeGreaterThan(0);
+
+    for (const ch of glyphs.ascii) {
+      expect(ch.codePointAt(0)!).toBeLessThanOrEqual(0x7f);
+    }
+    // Nerd Font glyphs come from the private-use area; stock markers never do.
+    const nerdFirst = [...glyphs.nerdFont][0]!.codePointAt(0)!;
+    expect(nerdFirst).toBeGreaterThanOrEqual(0xe000);
+    expect(nerdFirst).toBeLessThanOrEqual(0xf8ff);
+    for (const ch of glyphs.unicode) {
+      const code = ch.codePointAt(0)!;
+      expect(code < 0xe000 || code > 0xf8ff).toBe(true);
+    }
+    // Where asciiText already converts the stock marker, both mechanisms
+    // must agree on the same ASCII replacement.
+    const converted = asciiText(glyphs.unicode);
+    if (converted !== glyphs.unicode) {
+      expect(converted).toBe(glyphs.ascii);
+    }
+  }
+});
+
+test('iconGlyph gives ASCII priority and switches by saved style', () => {
+  expect(iconGlyph('play', 'unicode', false)).toBe('▶');
+  expect(iconGlyph('play', 'unicode', true)).toBe('>');
+  expect(iconGlyph('play', 'nerd-font', true)).toBe('>');
+  expect(iconGlyph('play', 'nerd-font', false)).toBe('\u{f04b}');
+  expect(iconGlyph('repeatOne', 'nerd-font', false)).toBe('\u{f01e}1');
+  expect(iconGlyph('repeatOne', 'unicode', false)).toBe('🔂');
+  expect(iconGlyph('chevron', 'unicode', false)).toBe('›');
+  // The search/queue sidebar markers stay usable without any icon font.
+  expect(iconGlyph('search', 'nerd-font', false)).toBe('\u{f002}');
+  expect(iconGlyph('queue', 'unicode', false)).toBe('Q');
+});
+
 test('spinner frames are mode-specific', () => {
   const unicode = spinnerFramesFor(false);
   const ascii = spinnerFramesFor(true);
@@ -160,6 +231,9 @@ test('usePresentation reads both flags from config', async () => {
     expect(captured!.text('♪')).toBe('♪');
     expect(captured!.borderProps).toEqual({});
     expect(captured!.scrollbarProps).toEqual({});
+    // Default profile: Nerd Font glyphs without ASCII chrome.
+    expect(captured!.icon('play')).toBe('\u{f04b}');
+    expect(captured!.icon('music')).toBe('\u{f001}');
 
     await act(async () => {
       store.set(configAtom, { ...DEFAULT_CONFIG, ascii: true, reducedMotion: true });
@@ -170,6 +244,15 @@ test('usePresentation reads both flags from config', async () => {
     expect(captured!.text('♪')).toBe('#');
     expect(captured!.borderProps).toEqual(borderPropsFor(true));
     expect(captured!.scrollbarProps).toEqual(scrollbarPropsFor(true));
+    // ASCII chrome overrides the saved icon style.
+    expect(captured!.icon('play')).toBe('>');
+
+    await act(async () => {
+      store.set(configAtom, { ...DEFAULT_CONFIG, iconStyle: 'unicode' });
+    });
+    await setup.renderOnce();
+    expect(captured!.icon('play')).toBe('▶');
+    expect(captured!.icon('queue')).toBe('Q');
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -296,6 +379,9 @@ test('TrackList and Sidebar render ASCII chrome without touching content', async
 
 test('Sidebar and Header keep Unicode chrome when ASCII is off', async () => {
   const store = createStore();
+  // This test verifies the stock Unicode markers, so opt in explicitly;
+  // the default profile is Nerd Font.
+  store.set(configAtom, { ...DEFAULT_CONFIG, iconStyle: 'unicode' });
   const inputRef = { current: null };
   const setup = await testRender(
     <Provider store={store}>
@@ -694,3 +780,204 @@ test('source picker shows custom input only while editing and surfaces busy/erro
     });
   }
 });
+
+test('palette previews the effective icon mode and its ASCII fallback', async () => {
+  const store = createStore();
+  const palette = await testRender(
+    <Provider store={store}>
+      <CommandPalette filter="icon style" selectedIdx={0} onFilterChange={(): void => {}} />
+    </Provider>,
+    { width: 64, height: 20 },
+  );
+  try {
+    await palette.renderOnce();
+    let frame = palette.captureCharFrame();
+    expect(frame).toContain('Toggle Icon Style');
+    expect(frame).toContain('[Nerd Font]');
+
+    await act(async () => {
+      store.set(configAtom, { ...DEFAULT_CONFIG, iconStyle: 'unicode' });
+    });
+    await palette.renderOnce();
+    expect(palette.captureCharFrame()).toContain('[Unicode]');
+
+    // ASCII keeps the saved Unicode preference visible but inactive.
+    await act(async () => {
+      store.set(configAtom, { ...DEFAULT_CONFIG, ascii: true, iconStyle: 'unicode' });
+    });
+    await palette.renderOnce();
+    frame = palette.captureCharFrame();
+    expect(frame).toContain('[Unicode (inactive in ASCII)]');
+    // ASCII chrome is independently reflected in its own toggle row.
+    expect(filterCommands('ascii')[0]!.name).toBe('Toggle ASCII Mode');
+  } finally {
+    await act(async () => {
+      palette.renderer.destroy();
+    });
+  }
+
+  const helpStore = createStore();
+  const help = await testRender(
+    <Provider store={helpStore}>
+      <HelpOverlay />
+    </Provider>,
+    { width: 110, height: 44 },
+  );
+  try {
+    await help.renderOnce();
+    const frame = help.captureCharFrame();
+    expect(frame).toContain('Toggle Icon Style');
+    expect(frame).toContain('[Nerd Font]');
+  } finally {
+    await act(async () => {
+      help.renderer.destroy();
+    });
+  }
+});
+
+const MEDIA_LINES = [
+  { time: 0, text: 'Café 東京 👨‍🎨' },
+  { time: 12, text: 'Combiné áccents' },
+];
+
+test('Nerd Font style swaps owned icons while media text stays verbatim', async () => {
+  const store = createStore();
+  store.set(configAtom, { ...DEFAULT_CONFIG, iconStyle: 'nerd-font' });
+  store.set(lyricsDocumentAtom, {
+    mediaKey: '["youtube","a"]',
+    sourceKey: 'src',
+    contentHash: 'hash-1',
+    original: {
+      synced: true,
+      source: 'lrclib',
+      sourceUrl: 'https://lyrics.example/42',
+      lines: MEDIA_LINES,
+    },
+  });
+  store.set(playerPositionAtom, 0);
+  const setup = await testRender(
+    <Provider store={store}>
+      <Lyrics />
+    </Provider>,
+    { width: 60, height: 16 },
+  );
+  try {
+    await setup.renderOnce();
+    const frame = setup.captureCharFrame();
+    // Active-line marker is the Nerd Font music glyph, not the stock ♪.
+    expect(frame).toContain('\u{f001}');
+    expect(frame).not.toContain('♪');
+    // Media text — emoji, CJK, and combining marks — is untouched.
+    expect(frame).toContain('Café 東京 👨‍🎨');
+    expect(frame).toContain('Combiné áccents');
+    // Non-icon chrome punctuation keeps its stock form.
+    expect(frame).toContain('•');
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+
+  const pickerStore = createStore();
+  pickerStore.set(configAtom, { ...DEFAULT_CONFIG, iconStyle: 'nerd-font' });
+  const picker = await testRender(
+    <Provider store={pickerStore}>
+      <SourcePicker overlay={{ ...PICKER, error: 'boom' }} onChange={(): void => {}} />
+    </Provider>,
+    { width: 90, height: 24 },
+  );
+  try {
+    await picker.renderOnce();
+    const frame = picker.captureCharFrame();
+    expect(frame).toContain('\u{f0da}'); // selected marker
+    expect(frame).not.toContain('▸');
+    expect(frame).toContain('\u{f071}'); // warning marker
+    expect(frame).not.toContain('⚠');
+    expect(frame).toContain('boom');
+  } finally {
+    await act(async () => {
+      picker.renderer.destroy();
+    });
+  }
+
+  const bookmarkStore = createStore();
+  bookmarkStore.set(configAtom, { ...DEFAULT_CONFIG, iconStyle: 'nerd-font' });
+  const bookmarks = await testRender(
+    <Provider store={bookmarkStore}>
+      <EpisodeBookmarks
+        overlay={{
+          kind: 'episode-bookmarks',
+          track: EPISODE_TRACK,
+          entryId: null,
+          bookmarks: [
+            {
+              id: 'bm-1',
+              audioKey: 'youtube:a',
+              mediaKey: '["podcast","pod-1","ep-1"]',
+              positionMs: 65_000,
+              label: 'Intro 東京',
+              createdAt: 1_767_225_600_000,
+              updatedAt: 1_767_225_600_000,
+            },
+          ],
+          selectedIdx: 0,
+          editing: null,
+          value: '',
+          error: null,
+        }}
+        onInput={(): void => {}}
+      />
+    </Provider>,
+    { width: 70, height: 18 },
+  );
+  try {
+    await bookmarks.renderOnce();
+    const frame = bookmarks.captureCharFrame();
+    expect(frame).toContain('\u{f0da}');
+    expect(frame).not.toContain('▸');
+    expect(frame).toContain('Intro 東京');
+    expect(frame).toContain('[YT]');
+  } finally {
+    await act(async () => {
+      bookmarks.renderer.destroy();
+    });
+  }
+});
+
+test('icon styles keep every layout free of stock icons while media stays verbatim', async () => {
+  for (const iconStyle of ['nerd-font', 'unicode'] as IconStyle[]) {
+    const store = createStore();
+    store.set(configAtom, { ...DEFAULT_CONFIG, iconStyle });
+    const track = makeTrack('icon-track', 'Björk 東京');
+    store.set(searchResultsAtom, { tracks: [track], hasMore: false });
+    store.set(playerPlaybackAtom, {
+      track,
+      source: {
+        kind: 'youtube',
+        url: 'https://music.youtube.com/watch?v=icon-track',
+        videoId: 'icon-track',
+        selection: 'auto',
+      },
+      requestId: 100,
+      origin: { kind: 'direct' },
+    });
+    store.set(playerStateAtom, 'paused');
+    const app = await renderTestApp({ store });
+    try {
+      for (const layout of LAYOUT_ORDER) {
+        await act(async () => store.set(layoutAtom, layout));
+        await app.renderOnce();
+        const frame = app.captureCharFrame();
+        expect(frame).toContain('Björk');
+        expect(frame).toContain('東京');
+        if (iconStyle === 'nerd-font') {
+          // Migrated marker surfaces show Nerd Font glyphs only.
+          expect(frame).not.toContain('♪');
+          expect(frame).not.toContain('▸');
+        }
+      }
+    } finally {
+      await app.cleanup();
+    }
+  }
+}, 30_000);

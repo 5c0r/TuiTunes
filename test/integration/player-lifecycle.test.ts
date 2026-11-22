@@ -18,8 +18,10 @@ import {
   playerAudioBackendAtom,
   playerDurationAtom,
   playerMuteAtom,
+  playerNoticeAtom,
   playerPositionAtom,
   playerProcessIdentityAtom,
+  playerSeekableRequestAtom,
   playerStateAtom,
   playerSpeedAtom,
   playerVolumeAtom,
@@ -27,10 +29,11 @@ import {
 import type { PlaybackTarget } from '../../src/providers/types';
 
 /**
- * Real-process mpv lifecycle proof: play/pause/seek a local WAV fixture,
- * SIGKILL mpv, verify crash recovery to the same source/position, and verify
- * deterministic teardown. Opt-in via TUITUNES_MPV_INTEGRATION=1 because it
- * needs a real mpv binary.
+ * Real-process mpv lifecycle proof: play/pause/seek a local WAV fixture
+ * (including a load-time startPosition resume), SIGKILL mpv, verify crash
+ * recovery to the same source/position (seekable confirmation included),
+ * and verify deterministic teardown. Opt-in via TUITUNES_MPV_INTEGRATION=1
+ * because it needs a real mpv binary.
  */
 const INTEGRATION = process.env.TUITUNES_MPV_INTEGRATION === '1';
 const mpvTest = INTEGRATION ? test : test.skip;
@@ -166,6 +169,14 @@ mpvTest(
         10_000,
       );
 
+      // Observer 15 (seekable) confirms the local file once no
+      // request-bound seek is outstanding.
+      await until(
+        () => store.get(playerSeekableRequestAtom) === 1,
+        'seekable confirmed for initial playback',
+        5_000,
+      );
+
       // Observer 14 (current-ao) publishes the real backend; --ao=null is a
       // known-uncapturable output, never a missing report.
       await until(
@@ -189,11 +200,23 @@ mpvTest(
           track: { ...target.track, id: 'replacement', title: 'Replacement fixture' },
           source: { kind: 'rss', url: `file://${replacementPath}`, selection: 'auto' },
         },
-        { preservePause: true },
+        // Load-start resume: the seek lands once the file loads; readiness
+        // is confirmed through the seekable atom below, not this promise.
+        { preservePause: true, startPosition: 4 },
       );
       await until(() => loaded.has(2), 'replacement loaded while paused', 10_000);
       expect(store.get(playerStateAtom)).toBe('paused');
-      expect(store.get(playerPositionAtom)).toBeLessThan(0.5);
+      await until(
+        () => store.get(playerPositionAtom) >= 3.5,
+        'load-start seek applied while paused',
+        5_000,
+      );
+      expect(store.get(playerNoticeAtom)).toBe('Resumed at 0:04');
+      await until(
+        () => store.get(playerSeekableRequestAtom) === 2,
+        'seekable confirmed after load-start seek',
+        5_000,
+      );
       expect(store.get(playerVolumeAtom)).toBe(47);
       expect(store.get(playerMuteAtom)).toBe(true);
       expect(store.get(playerSpeedAtom)).toBe(1.5);
@@ -222,6 +245,8 @@ mpvTest(
       process.kill(crashPids[0], 'SIGKILL');
       await until(() => store.get(playerStateAtom) === 'stopped', 'disconnect observed', 5_000);
       const crashPosition = store.get(playerPositionAtom);
+      // Disconnect invalidates the seekable confirmation before recovery.
+      expect(store.get(playerSeekableRequestAtom)).toBeNull();
 
       // Recovery reloads the same local source and restores position.
       await until(() => store.get(playerStateAtom) === 'playing', 'recovery playback', 20_000);
@@ -232,9 +257,29 @@ mpvTest(
         10_000,
       );
 
+      // The rebinding plus its recovery seek restore the confirmation and
+      // surface the nonfatal resume notice.
+      await until(
+        () => store.get(playerSeekableRequestAtom) === 2,
+        'seekable restored after recovery',
+        10_000,
+      );
+      expect(store.get(playerNoticeAtom)).toMatch(/^Resumed at /);
+
       // Respawn publishes a fresh identity even though the source is unchanged.
       const secondIdentity = store.get(playerProcessIdentityAtom);
       expect(secondIdentity?.clientName).not.toBe(firstIdentity?.clientName);
+
+      // Normal replacement also needs fresh confirmation, even when the
+      // seekable property is true on both sides of the transition.
+      await controller.play({ ...target, requestId: 3 });
+      await until(
+        () => store.get(playerSeekableRequestAtom) === 3,
+        'click-to-seek available after replacing a seekable file',
+        5_000,
+      );
+      await controller.seekAbsolute(2);
+      await until(() => store.get(playerPositionAtom) >= 1.8, 'absolute seek applied', 5_000);
     } finally {
       const livePids = getTrackedPids();
       await controller.destroy();

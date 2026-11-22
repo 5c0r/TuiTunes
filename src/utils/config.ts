@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+export type IconStyle = 'unicode' | 'nerd-font';
+
 export interface TuiTunesConfig {
   volume: number;
   translationLanguage: string | null;
@@ -9,6 +11,8 @@ export interface TuiTunesConfig {
   deeplApiKey: string | null;
   lingvaInstance: string | null;
   ascii: boolean;
+  /** Icon glyph set used while `ascii` is off; saved while suppressed. */
+  iconStyle: IconStyle;
   reducedMotion: boolean;
   spectrumEnabled: boolean;
 }
@@ -23,6 +27,7 @@ export const DEFAULT_CONFIG: TuiTunesConfig = {
   deeplApiKey: null,
   lingvaInstance: null,
   ascii: false,
+  iconStyle: 'nerd-font',
   reducedMotion: false,
   spectrumEnabled: false,
 };
@@ -47,6 +52,9 @@ export function loadConfig(): TuiTunesConfig {
       deeplApiKey: typeof value.deeplApiKey === 'string' ? value.deeplApiKey : null,
       lingvaInstance: typeof value.lingvaInstance === 'string' ? value.lingvaInstance : null,
       ascii: typeof value.ascii === 'boolean' ? value.ascii : false,
+      // Missing or invalid values (including pre-icon-style configs) fall
+      // back to Nerd Font; only an explicit 'unicode' opt-in is preserved.
+      iconStyle: value.iconStyle === 'unicode' ? 'unicode' : 'nerd-font',
       reducedMotion: typeof value.reducedMotion === 'boolean' ? value.reducedMotion : false,
       spectrumEnabled: typeof value.spectrumEnabled === 'boolean' ? value.spectrumEnabled : false,
     };

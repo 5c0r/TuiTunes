@@ -1,5 +1,5 @@
 import type { BorderCharacters, BorderStyle } from '@opentui/core';
-import type { TuiTunesConfig } from '../utils/config';
+import type { IconStyle, TuiTunesConfig } from '../utils/config';
 
 /**
  * Shared presentation profile for ASCII chrome and reduced motion.
@@ -136,8 +136,68 @@ export function spinnerFramesFor(ascii: boolean): readonly string[] {
   return ascii ? ASCII_SPINNER_FRAMES : UNICODE_SPINNER_FRAMES;
 }
 
+/** One semantic app icon: the glyph for each supported style. */
+export interface IconGlyphs {
+  /** Stock Unicode marker used with `iconStyle: 'unicode'`. */
+  readonly unicode: string;
+  /** Nerd Font Mono glyph (private-use area) for `iconStyle: 'nerd-font'`. */
+  readonly nerdFont: string;
+  /** Plain ASCII fallback used while full ASCII chrome is enabled. */
+  readonly ascii: string;
+}
+
+/**
+ * The typed semantic icon map. Unicode/ASCII columns preserve the markers
+ * TuiTunes already rendered; Nerd Font Mono glyphs (private-use codepoints)
+ * replace them only in Nerd Font mode. Spinner frames and the spectrum ramp
+ * intentionally stay outside this map and never use private-use glyphs.
+ */
+export const ICONS = {
+  play: { unicode: '▶', nerdFont: '\u{f04b}', ascii: '>' },
+  pause: { unicode: '⏸', nerdFont: '\u{f04c}', ascii: '||' },
+  stop: { unicode: '⏹', nerdFont: '\u{f04d}', ascii: '[]' },
+  buffering: { unicode: '⟳', nerdFont: '\u{f021}', ascii: '*' },
+  previous: { unicode: '⏮', nerdFont: '\u{f04a}', ascii: '|<' },
+  next: { unicode: '⏭', nerdFont: '\u{f04e}', ascii: '>|' },
+  mute: { unicode: '🔇', nerdFont: '\u{f026}', ascii: '[M]' },
+  volume: { unicode: '🔊', nerdFont: '\u{f028}', ascii: '[V]' },
+  shuffle: { unicode: '🔀', nerdFont: '\u{f074}', ascii: '[S]' },
+  repeat: { unicode: '🔁', nerdFont: '\u{f01e}', ascii: '[R]' },
+  repeatOne: { unicode: '🔂', nerdFont: '\u{f01e}1', ascii: '[R1]' },
+  warning: { unicode: '⚠', nerdFont: '\u{f071}', ascii: '!' },
+  search: { unicode: '/', nerdFont: '\u{f002}', ascii: '/' },
+  queue: { unicode: 'Q', nerdFont: '\u{f03a}', ascii: 'Q' },
+  favorite: { unicode: '♥', nerdFont: '\u{f004}', ascii: '*' },
+  history: { unicode: '⟲', nerdFont: '\u{f1da}', ascii: '^' },
+  feeds: { unicode: '📋', nerdFont: '\u{f09e}', ascii: 'F' },
+  episodes: { unicode: '📜', nerdFont: '\u{f1c7}', ascii: 'E' },
+  music: { unicode: '♪', nerdFont: '\u{f001}', ascii: '#' },
+  podcast: { unicode: '🎙', nerdFont: '\u{f2ce}', ascii: 'P' },
+  check: { unicode: '✓', nerdFont: '\u{f00c}', ascii: 'v' },
+  selected: { unicode: '▸', nerdFont: '\u{f0da}', ascii: '>' },
+  chevron: { unicode: '›', nerdFont: '\u{f054}', ascii: '>' },
+  close: { unicode: '✕', nerdFont: '\u{f00d}', ascii: 'x' },
+  bookmark: { unicode: '🔖', nerdFont: '\u{f02e}', ascii: 'B' },
+  source: { unicode: '⇄', nerdFont: '\u{f0ec}', ascii: '<->' },
+  keyboard: { unicode: '⌨', nerdFont: '\u{f11c}', ascii: 'K' },
+} as const satisfies Readonly<Record<string, IconGlyphs>>;
+
+/** Every semantic icon name usable through `Presentation.icon`. */
+export type IconName = keyof typeof ICONS;
+
+/**
+ * Resolve one semantic icon. ASCII chrome overrides everything; otherwise the
+ * saved icon style picks Unicode or Nerd Font glyphs.
+ */
+export function iconGlyph(name: IconName, style: IconStyle, ascii: boolean): string {
+  const glyphs = ICONS[name];
+  if (ascii) return glyphs.ascii;
+  return style === 'nerd-font' ? glyphs.nerdFont : glyphs.unicode;
+}
+
 /** Toggle command ids whose live state is shown in palette and help rows. */
 export const TOGGLE_COMMAND_IDS = [
+  'toggle-icon-style',
   'toggle-ascii',
   'toggle-reduced-motion',
   'toggle-spectrum',
@@ -156,8 +216,25 @@ export function toggleStatusLabel(status: ToggleStatus): string {
 
 /** Live presentation state of a toggle command from the current config. */
 export function toggleStatusFor(id: ToggleCommandId, config: TuiTunesConfig): ToggleStatus {
+  if (id === 'toggle-icon-style') {
+    if (config.ascii) return 'suppressed';
+    return config.iconStyle === 'nerd-font' ? 'on' : 'off';
+  }
   if (id === 'toggle-ascii') return config.ascii ? 'on' : 'off';
   if (id === 'toggle-reduced-motion') return config.reducedMotion ? 'on' : 'off';
   if (!config.spectrumEnabled) return 'off';
   return config.reducedMotion ? 'suppressed' : 'on';
+}
+
+/**
+ * Live row label for a toggle command. Icon style names its effective mode
+ * (e.g. `Nerd Font (inactive in ASCII)`) instead of On/Off, since ASCII keeps
+ * the saved preference while suppressing it.
+ */
+export function toggleStateLabel(id: ToggleCommandId, config: TuiTunesConfig): string {
+  if (id === 'toggle-icon-style') {
+    const style = config.iconStyle === 'unicode' ? 'Unicode' : 'Nerd Font';
+    return config.ascii ? `${style} (inactive in ASCII)` : style;
+  }
+  return toggleStatusLabel(toggleStatusFor(id, config));
 }

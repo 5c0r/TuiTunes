@@ -75,7 +75,7 @@ export function SourcePicker({ overlay, onChange }: SourcePickerProps) {
             attributes={i === selected ? TextAttributes.BOLD : 0}
             truncate
           >
-            {i === selected ? `${p.text('▸')} ` : '  '}
+            {i === selected ? `${p.icon('selected')} ` : '  '}
             {choice.label}
             {i === selected ? ` ${p.text('·')} ${choice.hint}` : ''}
           </text>
@@ -99,7 +99,7 @@ export function SourcePicker({ overlay, onChange }: SourcePickerProps) {
         {overlay.busy ? <text fg={t.yellow}>Applying source...</text> : null}
         {overlay.error ? (
           <text fg={t.red} truncate>
-            {p.text('⚠')} {overlay.error}
+            {p.icon('warning')} {overlay.error}
           </text>
         ) : null}
         <text fg={t.dim}>Changing the audio source restarts playback at 0:00</text>

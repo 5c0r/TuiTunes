@@ -5,6 +5,7 @@ import type { AlbumSummary, Track } from '../providers/types';
 import {
   catalogFrameAtom,
   catalogIndexAtom,
+  type CatalogCollection,
   catalogListLengthAtom,
   catalogStateAtom,
   type CatalogCollectionState,
@@ -12,6 +13,7 @@ import {
 import { formatTime, truncateText } from '../utils/format';
 import { AlbumList } from './AlbumList';
 import { usePresentation } from './usePresentation';
+import { usePointerClicks } from './usePointerClicks';
 import { useTheme } from './useTheme';
 import { TrackList } from './TrackList';
 
@@ -21,6 +23,13 @@ export interface CatalogViewProps {
   playingTrackId?: string;
   /** Favorite mediaKey set, used for the Top songs status line. */
   favoritesSet?: Set<string>;
+  onTabClick?: (frameId: string, tab: CatalogCollection) => void;
+  onRowClick?: (
+    frameId: string,
+    items: readonly (Track | AlbumSummary)[],
+    index: number,
+    activate: boolean,
+  ) => void;
 }
 
 const TAB_LABELS: ReadonlyArray<{ id: 'albums' | 'singles' | 'songs'; label: string }> = [
@@ -41,13 +50,20 @@ function playingIndexFor(tracks: readonly Track[], playingTrackId: string | unde
  * glyphs route through the shared ASCII presentation profile; user/provider
  * text is never transliterated.
  */
-export function CatalogView({ focused, playingTrackId, favoritesSet }: CatalogViewProps) {
+export function CatalogView({
+  focused,
+  playingTrackId,
+  favoritesSet,
+  onTabClick,
+  onRowClick,
+}: CatalogViewProps) {
   const t = useTheme();
   const p = usePresentation();
   const state = useAtomValue(catalogStateAtom);
   const frame = useAtomValue(catalogFrameAtom);
   const selectedIndex = useAtomValue(catalogIndexAtom);
   const count = useAtomValue(catalogListLengthAtom);
+  const { bind } = usePointerClicks(frame?.frameId);
 
   if (!frame) return null;
 
@@ -55,10 +71,13 @@ export function CatalogView({ focused, playingTrackId, favoritesSet }: CatalogVi
     .map((entry) =>
       entry.kind === 'artist' ? (entry.detail?.name ?? 'Artist') : (entry.detail?.title ?? 'Album'),
     )
-    .join(` ${p.text('›')} `);
+    .join(` ${p.icon('chevron')} `);
 
   const collection: CatalogCollectionState<AlbumSummary | Track> | null =
     frame.kind === 'album' ? frame.tracks : frame[frame.activeTab];
+  const clickRow = onRowClick && collection
+    ? (index: number, activate: boolean) => onRowClick(frame.frameId, collection.items, index, activate)
+    : undefined;
   const songList: readonly Track[] | null =
     frame.kind === 'album'
       ? frame.tracks.items
@@ -133,8 +152,10 @@ export function CatalogView({ focused, playingTrackId, favoritesSet }: CatalogVi
                   key={tab.id}
                   fg={active ? t.accent : t.dim}
                   attributes={active ? TextAttributes.BOLD : 0}
+                  selectable={false}
+                  onMouse={onTabClick ? bind(tab.id, () => onTabClick(frame.frameId, tab.id)) : undefined}
                 >
-                  {active ? `${p.text('▸')} ` : ''}
+                  {active ? `${p.icon('selected')} ` : ''}
                   {tab.label}
                   {'   '}
                 </text>
@@ -176,6 +197,8 @@ export function CatalogView({ focused, playingTrackId, favoritesSet }: CatalogVi
       <box flexGrow={1} flexDirection="column">
         {frame.kind === 'album' ? (
           <TrackList
+            key={frame.frameId}
+            onRowClick={clickRow}
             tracks={frame.tracks.items}
             focused={focused}
             selectedIndex={selectedIndex}
@@ -183,6 +206,8 @@ export function CatalogView({ focused, playingTrackId, favoritesSet }: CatalogVi
           />
         ) : frame.activeTab === 'songs' ? (
           <TrackList
+            key={`${frame.frameId}:songs`}
+            onRowClick={clickRow}
             tracks={frame.songs.items}
             focused={focused}
             selectedIndex={selectedIndex}
@@ -190,6 +215,8 @@ export function CatalogView({ focused, playingTrackId, favoritesSet }: CatalogVi
           />
         ) : (
           <AlbumList
+            key={`${frame.frameId}:${frame.activeTab}`}
+            onRowClick={clickRow}
             albums={frame.activeTab === 'albums' ? frame.albums.items : frame.singles.items}
             selectedIndex={selectedIndex}
             focused={focused}

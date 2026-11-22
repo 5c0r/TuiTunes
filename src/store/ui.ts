@@ -1,4 +1,5 @@
 import { atom } from 'jotai';
+import type { EpisodeBookmark } from '../application/episode-progress';
 import type { SearchContinuation, SearchResult, Track } from '../providers/types';
 import type { LayoutPreset } from '../ui/layouts';
 import type { ThemeName } from '../ui/themes';
@@ -35,6 +36,16 @@ export type Overlay =
   | { kind: 'transcript-url'; value: string }
   | { kind: 'transcript-search'; query: string; selectedIdx: number }
   | { kind: 'translation-language'; value: string }
+  | {
+      kind: 'episode-bookmarks';
+      track: Track;
+      entryId: string | null;
+      bookmarks: EpisodeBookmark[];
+      selectedIdx: number;
+      editing: 'rename' | 'delete' | null;
+      value: string;
+      error: string | null;
+    }
   | {
       kind: 'source-picker';
       dialogId: string;

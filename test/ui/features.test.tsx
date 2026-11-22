@@ -303,14 +303,21 @@ test('display toggles retain independent persisted values and do not play anythi
   const app = await renderTestApp({ store });
   try {
     await command(app, 'toggle ascii');
+    await command(app, 'toggle icon style');
     await command(app, 'toggle reduced motion');
     await command(app, 'toggle audio spectrum');
     expect(store.get(configAtom)).toMatchObject({
       ascii: true,
+      iconStyle: 'unicode',
       reducedMotion: true,
       spectrumEnabled: true,
     });
-    expect(loadConfig()).toMatchObject({ ascii: true, reducedMotion: true, spectrumEnabled: true });
+    expect(loadConfig()).toMatchObject({
+      ascii: true,
+      iconStyle: 'unicode',
+      reducedMotion: true,
+      spectrumEnabled: true,
+    });
     expect(app.player.played).toHaveLength(0);
     await command(app, 'toggle reduced motion');
     expect(store.get(configAtom)).toMatchObject({
@@ -318,6 +325,8 @@ test('display toggles retain independent persisted values and do not play anythi
       reducedMotion: false,
       spectrumEnabled: true,
     });
+    await command(app, 'toggle ascii');
+    expect(loadConfig()).toMatchObject({ ascii: false, iconStyle: 'unicode' });
   } finally {
     await app.cleanup();
     rmSync(CONFIG_PATH, { force: true });

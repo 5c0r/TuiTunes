@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test, vi } from 'bun:test';
 import { KeyEvent } from '@opentui/core';
 import type { MockInput } from '@opentui/core/testing';
 import { createStore } from 'jotai';
@@ -285,7 +285,7 @@ test('Ctrl+F without transcript data is consumed and never toggles favorites', a
   }
 });
 
-test('Enter on a highlighted suggestion searches once with the suggestion text', async () => {
+test('Enter on a highlighted suggestion searches once and keeps suggestions closed', async () => {
   const store = createStore();
   store.set(focusedPanelAtom, 'search');
   const searchesBefore = musicSearches.length;
@@ -293,14 +293,16 @@ test('Enter on a highlighted suggestion searches once with the suggestion text',
     store,
     music,
   });
+  vi.useFakeTimers();
 
   try {
     await typeQuery(mockInput, renderOnce, 'al');
     await act(async () => {
-      await Bun.sleep(320); // suggestion debounce is 250 ms
+      vi.advanceTimersByTime(250);
     });
     await renderOnce();
     expect(captureCharFrame()).toContain('alpha');
+    expect(captureCharFrame()).toContain('beta');
 
     await act(async () => {
       mockInput.pressArrow('down');
@@ -309,14 +311,17 @@ test('Enter on a highlighted suggestion searches once with the suggestion text',
     await renderOnce();
     await pressEnter(mockInput);
     await act(async () => {
-      await Bun.sleep(0);
+      // React wrote the chosen text to the input. It must not queue new suggestions.
+      vi.advanceTimersByTime(250);
     });
     await renderOnce();
 
     expect(musicSearches.slice(searchesBefore)).toEqual([{ query: 'alpha', hasMore: false }]);
     expect(store.get(searchQueryAtom)).toBe('alpha');
     expect(captureCharFrame()).toContain('alpha');
+    expect(captureCharFrame()).not.toContain('beta');
   } finally {
+    vi.useRealTimers();
     await cleanup();
   }
 });
@@ -641,10 +646,10 @@ test('palette load-more continues the retained search', async () => {
   }
 });
 
-test('Enter on a podcast search result loads its episodes', async () => {
+test('opening a populated podcast feed keeps the search bar visible and editable', async () => {
   const podcast = {
     id: '1',
-    title: 'Podcast one',
+    title: 'A podcast with a title that wraps in a narrow terminal',
     author: 'Author',
     feedUrl: 'https://example.test/1.xml',
   };
@@ -652,10 +657,14 @@ test('Enter on a podcast search result loads its episodes', async () => {
   const store = createStore();
   store.set(sectionAtom, 'podcast');
   store.set(focusedPanelAtom, 'search');
-  const { mockInput, renderOnce, cleanup } = await renderTestApp({ store, podcasts });
+  const { captureCharFrame, mockInput, renderOnce, resize, cleanup } = await renderTestApp({
+    store,
+    podcasts,
+  });
 
   try {
-    await typeQuery(mockInput, renderOnce, 'pod');
+    await act(async () => resize(60, 18));
+    await typeQuery(mockInput, renderOnce, 'podcast query');
     await pressEnter(mockInput);
     await act(async () => {
       requests[0]?.respond(itunesSearchBody([podcast]));
@@ -666,13 +675,28 @@ test('Enter on a podcast search result loads its episodes', async () => {
 
     await pressEnter(mockInput);
     await act(async () => {
-      requests[1]?.respond('<rss version="2.0"><channel></channel></rss>');
+      const items = Array.from(
+        { length: 50 },
+        (_, index) =>
+          `<item><guid>${index}</guid><title>Episode ${index}</title><enclosure url="https://example.test/${index}.mp3" /></item>`,
+      );
+      requests[1]?.respond(`<rss version="2.0"><channel>${items.join('')}</channel></rss>`);
       await Bun.sleep(0);
     });
     await renderOnce();
 
     expect(store.get(podcastViewAtom)).toBe('episodes');
     expect(store.get(episodesLoadingAtom)).toBe(false);
+    expect(captureCharFrame()).toContain('Episode 0');
+    const headerLine = () => captureCharFrame().split('\n')[1];
+    expect(headerLine()).toContain('TuiTunes');
+    expect(headerLine()).toContain('podcast query');
+    await act(async () => {
+      mockInput.pressKey('/');
+    });
+    await renderOnce();
+    await typeQuery(mockInput, renderOnce, '!');
+    expect(headerLine()).toContain('podcast query!');
   } finally {
     await cleanup();
   }
