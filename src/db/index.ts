@@ -165,6 +165,19 @@ export function runMigrations(database: Database): void {
       );
       PRAGMA user_version = 5`);
     }
+    if (version < 6) {
+      // Per-document lyric delay offsets. Zero delay means "no offset" and is
+      // represented by the absence of a row, so stored values stay in range
+      // and nonzero. Existing library/queue data is untouched.
+      database.exec(`CREATE TABLE lyric_timing (
+        media_key TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        delay_ms INTEGER NOT NULL
+          CHECK (typeof(delay_ms) = 'integer' AND delay_ms BETWEEN -10000 AND 10000 AND delay_ms <> 0),
+        PRIMARY KEY (media_key, source_key)
+      );
+      PRAGMA user_version = 6`);
+    }
   })();
 }
 

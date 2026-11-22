@@ -2,6 +2,7 @@ import type { KeyEvent } from '@opentui/core';
 import type { CommandId } from '../commands';
 import { filterCommands } from '../commands';
 import type { FocusedPanel, MusicView, Overlay, PodcastView, Section } from '../store/ui';
+import { clampLyricDelay } from './lyric-timing';
 
 /** Snapshot of the UI state the keyboard dispatcher decides against. */
 export interface KeyboardState {
@@ -139,6 +140,25 @@ export function dispatchKey(
           if (overlay.selectedIdx === 3)
             actions.setOverlay({ ...overlay, editing: true, error: null });
           else actions.submitOverlay(overlay);
+        }
+        return true;
+      }
+      case 'lyric-timing': {
+        if (name === 'escape') actions.setOverlay(null);
+        else if (isEnter(name)) actions.submitOverlay(overlay);
+        else if (!hasModifier) {
+          const step = key.shift ? 500 : 100;
+          const delayMs =
+            name === 'left'
+              ? overlay.delayMs - step
+              : name === 'right'
+                ? overlay.delayMs + step
+                : name === 'r'
+                  ? 0
+                  : overlay.delayMs;
+          if (delayMs !== overlay.delayMs) {
+            actions.setOverlay({ ...overlay, delayMs: clampLyricDelay(delayMs), error: null });
+          }
         }
         return true;
       }
@@ -356,7 +376,10 @@ export function dispatchKey(
       actions.command('queue-add');
       return true;
     }
-    if (name === 'x' && (state.queuePane || (state.section === 'music' && state.musicView === 'queue'))) {
+    if (
+      name === 'x' &&
+      (state.queuePane || (state.section === 'music' && state.musicView === 'queue'))
+    ) {
       actions.command('queue-remove');
       return true;
     }

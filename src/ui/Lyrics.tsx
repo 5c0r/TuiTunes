@@ -1,18 +1,32 @@
 import type { ScrollBoxRenderable } from '@opentui/core';
 import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
-import { useEffect, useRef } from 'react';
-import type { LyricLine } from '../providers/lyrics';
+import { useEffect } from 'react';
+import { activeLyricIndex, effectiveCueMs } from '../application/lyric-timing';
 import {
   lyricsDataAtom,
+  lyricsDocumentAtom,
   lyricsErrorAtom,
   lyricsLoadingAtom,
   translationLoadingAtom,
 } from '../store/lyrics';
 import { playerPositionAtom } from '../store/player';
+import type { LyricFollowMode } from '../utils/config';
 import { Logger } from '../utils/logger';
+import { useLyricFollow } from './useLyricFollow';
+import { usePointerClicks } from './usePointerClicks';
 import { usePresentation } from './usePresentation';
 import { useTheme } from './useTheme';
+import type { Theme } from './themes';
+
+export { lyricFollowSuspendedAtom } from './useLyricFollow';
+
+export interface LyricsProps {
+  /** Live lyric delay in milliseconds; highlights and labels shift by it. */
+  readonly delayMs?: number;
+  /** Persisted follow policy for the active line. */
+  readonly followMode?: LyricFollowMode;
+}
 
 function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -20,45 +34,41 @@ function formatTimestamp(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Find the index of the active line: last line where time <= position. */
-function findCurrentLine(lines: LyricLine[], position: number): number {
-  let idx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].time <= position) idx = i;
-    else break;
-  }
-  return idx;
-}
-
-function lineColor(distance: number, t: ReturnType<typeof useTheme>): string {
+function lineColor(distance: number, t: Theme): string {
   if (distance === 0) return t.accent;
   if (distance <= 2) return t.fg;
   if (distance <= 5) return t.dim;
   return t.border;
 }
 
-export function Lyrics() {
+export function Lyrics({ delayMs = 0, followMode = 'keep-visible' }: LyricsProps) {
   const t = useTheme();
+  const document = useAtomValue(lyricsDocumentAtom);
   const data = useAtomValue(lyricsDataAtom);
   const loading = useAtomValue(lyricsLoadingAtom);
   const translating = useAtomValue(translationLoadingAtom);
   const error = useAtomValue(lyricsErrorAtom);
   const position = useAtomValue(playerPositionAtom);
-  const scrollRef = useRef<ScrollBoxRenderable>(null);
-  const p = usePresentation(scrollRef);
 
-  // Compute current line BEFORE early returns so the effect always has it.
-  // When data is absent, currentIdx stays -1 and the effect is a no-op.
-  const currentIdx = data?.synced ? findCurrentLine(data.lines, position) : -1;
+  // Compute current line BEFORE early returns so the follow hook always has
+  // it. When data is absent or unsynced, currentIdx stays -1 and following is
+  // a no-op: unsynced lyrics never jump.
+  const currentIdx = data?.synced ? activeLyricIndex(data.lines, position, delayMs) : -1;
 
-  // Auto-scroll: keep the active lyric line visible using OpenTUI's built-in
-  // scrollChildIntoView. Scrolls the minimum amount needed — if the line is
-  // already visible, it doesn't scroll at all.
-  useEffect(() => {
-    const sb = scrollRef.current;
-    if (!sb || currentIdx < 0) return;
-    sb.scrollChildIntoView(`lyric-${currentIdx}`);
-  }, [currentIdx]);
+  const follow = useLyricFollow({
+    document,
+    lines: data?.lines ?? null,
+    activeIndex: currentIdx,
+    followMode,
+    enabled: data?.synced === true,
+    scrollPresent: !loading && data !== null,
+  });
+  const p = usePresentation(follow.scrollRef);
+  const clicks = usePointerClicks(document?.mediaKey ?? 'none', {
+    context: document?.contentHash ?? null,
+    active: !loading && data !== null,
+    scrollRef: follow.scrollRef,
+  });
 
   // Log when translation data arrives at the rendering layer
   useEffect(() => {
@@ -128,7 +138,7 @@ export function Lyrics() {
       flexGrow={1}
       flexDirection="column"
     >
-      <scrollbox ref={scrollRef} {...p.scrollbarProps}>
+      <scrollbox ref={follow.scrollRef} onMouse={follow.onPaneMouse} {...p.scrollbarProps}>
         {error && (
           <box paddingLeft={1}>
             <text fg={t.red} truncate>
@@ -142,7 +152,10 @@ export function Lyrics() {
             const color = lineColor(distance, t);
             const isCurrent = i === currentIdx;
             const marker = isCurrent ? `${p.icon('music')} ` : '  ';
-            const ts = `[${formatTimestamp(line.time)}]`;
+            // Label shows the effective cue; negative adjusted cues clamp to
+            // zero for display while the source line stays immutable.
+            const cueMs = Math.max(0, effectiveCueMs(line.time, delayMs));
+            const ts = `[${formatTimestamp(cueMs / 1000)}]`;
 
             return (
               <box key={i} id={`lyric-${i}`} flexDirection="column">
@@ -172,6 +185,18 @@ export function Lyrics() {
           );
         })}
       </scrollbox>
+      {/* Manual-scroll resume action; pointer clicks respect open modals. */}
+      {follow.suspended && (
+        <box paddingLeft={1} paddingTop={1}>
+          <text
+            fg={t.accent}
+            attributes={TextAttributes.BOLD}
+            onMouse={clicks.bind('follow-lyrics', () => follow.resume())}
+          >
+            {p.icon('selected')} Follow Lyrics
+          </text>
+        </box>
+      )}
       {/* Source attribution */}
       <box paddingLeft={1} paddingTop={1}>
         <text fg={t.border} attributes={TextAttributes.DIM}>

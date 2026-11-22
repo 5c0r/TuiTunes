@@ -15,6 +15,7 @@ import { type CatalogController, createCatalogController } from './catalog';
 import { createEpisodeProgress, type EpisodeProgress } from './episode-progress';
 import type { LyricsDependencies, LyricsSession } from './lyrics';
 import { createLyricsSession } from './lyrics';
+import { createLyricTiming } from './lyric-timing';
 import type { PlaybackSession } from './playback';
 import { createPlaybackSession } from './playback';
 import { createQueuePersistence } from './queue-persistence';
@@ -37,6 +38,7 @@ export interface AppRuntime {
   readonly player: PlayerPort;
   readonly playback: PlaybackSession;
   readonly lyrics: LyricsSession;
+  readonly lyricTiming: ReturnType<typeof createLyricTiming>;
   readonly search: SearchController;
   readonly catalog: CatalogController;
   readonly spectrum: SpectrumSession;
@@ -80,6 +82,7 @@ export function createAppRuntime(store: Store, deps: RuntimeDependencies): AppRu
     fetchNativeTranslation: deps.fetchNativeTranslation,
     translationProvider: deps.translationProvider,
   });
+  const lyricTiming = createLyricTiming(store, deps.db);
   const search = createSearchController(store, {
     music: deps.music,
     podcasts: deps.podcasts,
@@ -91,6 +94,7 @@ export function createAppRuntime(store: Store, deps: RuntimeDependencies): AppRu
     player: deps.player,
     playback,
     lyrics,
+    lyricTiming,
     search,
     catalog,
     spectrum,
@@ -100,6 +104,7 @@ export function createAppRuntime(store: Store, deps: RuntimeDependencies): AppRu
       // Save the last confirmed checkpoint before playback is torn down or SQLite closes.
       episodeProgress.dispose();
       queuePersistence.dispose();
+      lyricTiming.dispose();
       const results = await Promise.allSettled([
         spectrum.dispose(),
         catalog.dispose(),

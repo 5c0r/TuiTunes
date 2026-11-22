@@ -345,7 +345,7 @@ test('upgrading from version 2 preserves library rows and accepts persisted list
       PRAGMA user_version = 2;`);
     runMigrations(db);
     expect(db.query<{ user_version: number }, []>('PRAGMA user_version').get()).toEqual({
-      user_version: 5,
+      user_version: 6,
     });
     const columns = (table: string) =>
       db

@@ -320,6 +320,24 @@ export const COMMANDS = [
     category: 'playback',
   },
   {
+    id: 'adjust-lyric-timing',
+    name: 'Adjust Lyric Timing',
+    description: 'Preview an earlier or later cue; save for this track and lyric source',
+    category: 'view',
+  },
+  {
+    id: 'cycle-lyric-follow',
+    name: 'Change Lyric Follow Position',
+    description: 'Switch between keeping the lyric visible and positioning it in the upper third',
+    category: 'view',
+  },
+  {
+    id: 'follow-lyrics',
+    name: 'Follow Lyrics',
+    description: 'Resume following the current lyric after manual scrolling',
+    category: 'view',
+  },
+  {
     id: 'browse-artist',
     name: 'Open Primary Artist',
     description: 'Browse releases and top songs of the selected music artist',

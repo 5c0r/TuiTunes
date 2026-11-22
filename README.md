@@ -212,6 +212,10 @@ TuiTunes has two independent sections, each with its own sidebar and search rout
 
 Use **Open Primary Artist** or **Open Album** in the command palette on a focused music row with provider browse metadata. Artist tabs use Left/Right; Escape goes back and restores the previous selection. **Add Album to Queue** collects all available pages before one atomic append. **Play Album** appends without clearing the existing queue, then starts the first new entry. Unsupported or incomplete collections are reported rather than silently treated as complete.
 
+For synced music lyrics, use **Adjust Lyric Timing** in the command palette. Left/Right previews 100 ms earlier/later; hold Shift for 500 ms. Positive values show lyrics later. `r` previews the original timing, Enter saves (or removes a reset offset), and Escape discards the preview. Offsets are bounded to ±10 seconds and saved per track and lyric source. Podcast transcripts are unchanged.
+
+**Change Lyric Follow Position** switches between **Keep visible** (default) and **Upper third**. Scrolling the lyrics or dragging their scrollbar pauses follow for the current document without stopping highlights. Choose **Follow Lyrics** to resume.
+
 ### Podcast (Ctrl+2)
 
 - **Search** - iTunes podcast discovery
@@ -263,7 +267,8 @@ Config file: `~/.config/tuimusic/config.json`
   "ascii": false,
   "iconStyle": "nerd-font",
   "reducedMotion": false,
-  "spectrumEnabled": false
+  "spectrumEnabled": false,
+  "lyricFollowMode": "keep-visible"
 }
 ```
 

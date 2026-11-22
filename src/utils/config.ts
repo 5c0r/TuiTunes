@@ -15,7 +15,10 @@ export interface TuiTunesConfig {
   iconStyle: IconStyle;
   reducedMotion: boolean;
   spectrumEnabled: boolean;
+  lyricFollowMode: LyricFollowMode;
 }
+
+export type LyricFollowMode = 'keep-visible' | 'upper-third';
 
 export const CONFIG_DIR = path.join(process.env.HOME || os.homedir(), '.config', 'tuimusic');
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
@@ -30,6 +33,7 @@ export const DEFAULT_CONFIG: TuiTunesConfig = {
   iconStyle: 'nerd-font',
   reducedMotion: false,
   spectrumEnabled: false,
+  lyricFollowMode: 'keep-visible',
 };
 
 export function loadConfig(): TuiTunesConfig {
@@ -57,6 +61,7 @@ export function loadConfig(): TuiTunesConfig {
       iconStyle: value.iconStyle === 'unicode' ? 'unicode' : 'nerd-font',
       reducedMotion: typeof value.reducedMotion === 'boolean' ? value.reducedMotion : false,
       spectrumEnabled: typeof value.spectrumEnabled === 'boolean' ? value.spectrumEnabled : false,
+      lyricFollowMode: value.lyricFollowMode === 'upper-third' ? 'upper-third' : 'keep-visible',
     };
   } catch {
     return { ...DEFAULT_CONFIG };
