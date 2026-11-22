@@ -1,4 +1,3 @@
-import type { ScrollBoxRenderable } from '@opentui/core';
 import { TextAttributes } from '@opentui/core';
 import { useAtomValue } from 'jotai';
 import { useEffect } from 'react';

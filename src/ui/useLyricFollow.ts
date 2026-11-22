@@ -157,6 +157,7 @@ export function useLyricFollow({
     };
   }, [scrollPresent, suspend]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reposition after new documents, translated rows, and renderer geometry changes.
   useEffect(() => {
     const box = scrollRef.current;
     if (!box || !scrollPresent || !enabled || activeIndex < 0 || suspended) return;

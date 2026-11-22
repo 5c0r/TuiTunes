@@ -74,7 +74,7 @@ async function renderLyrics(
 }
 
 /** Apply one state change, commit it, then draw exactly one fresh frame. */
-async function redraw(store: Store, setup: Setup, mutate: () => void): Promise<void> {
+async function redraw(_store: Store, setup: Setup, mutate: () => void): Promise<void> {
   await act(async () => {
     mutate();
   });

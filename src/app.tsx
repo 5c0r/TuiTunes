@@ -96,7 +96,7 @@ import { TranslationLanguageInput } from './ui/TranslationLanguageInput';
 import { nextTheme } from './ui/themes';
 import { useTheme } from './ui/useTheme';
 import { usePresentation } from './ui/usePresentation';
-import { type IconStyle, type LyricFollowMode, saveConfig } from './utils/config';
+import { type IconStyle, saveConfig } from './utils/config';
 import { formatTime } from './utils/format';
 import { Logger } from './utils/logger';
 import { searchTranscript } from './utils/transcript-search';
@@ -902,14 +902,16 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
     },
     'cycle-lyric-follow': () => {
       const current = store.get(configAtom);
-      const lyricFollowMode: LyricFollowMode =
-        current.lyricFollowMode === 'keep-visible' ? 'upper-third' : 'keep-visible';
-      const next = { ...current, lyricFollowMode };
+      const next: typeof current = {
+        ...current,
+        lyricFollowMode:
+          current.lyricFollowMode === 'keep-visible' ? 'upper-third' : 'keep-visible',
+      };
       saveConfig(next);
       setConfig(next);
       store.set(
         playerNoticeAtom,
-        lyricFollowMode === 'upper-third'
+        next.lyricFollowMode === 'upper-third'
           ? 'Lyric follow: Upper third'
           : 'Lyric follow: Keep visible',
       );

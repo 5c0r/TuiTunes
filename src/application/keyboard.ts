@@ -1,8 +1,8 @@
 import type { KeyEvent } from '@opentui/core';
+import { clampLyricDelay } from './lyric-timing';
 import type { CommandId } from '../commands';
 import { filterCommands } from '../commands';
 import type { FocusedPanel, MusicView, Overlay, PodcastView, Section } from '../store/ui';
-import { clampLyricDelay } from './lyric-timing';
 
 /** Snapshot of the UI state the keyboard dispatcher decides against. */
 export interface KeyboardState {

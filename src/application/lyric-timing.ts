@@ -114,8 +114,7 @@ export function createLyricTiming(store: Store, db: Database): LyricTiming {
       return; // Same request and document; keeps a freshly saved context.
     const context =
       target !== null &&
-      document !== null &&
-      document.original.synced &&
+      document?.original.synced &&
       target.track.source?.kind !== 'podcast' &&
       document.mediaKey === mediaKey(target.track)
         ? { document, requestId: target.requestId, delayMs: savedDelay(document) }
