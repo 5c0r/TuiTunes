@@ -85,6 +85,7 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | `src/application/spectrum.ts` | Capture generation, playback/config eligibility, drain-before-replacement lifecycle |
 | `src/application/queue-persistence.ts` | Versioned SQLite queue snapshot, compare-and-swap saves, no autoplay on restore |
 | `src/application/episode-progress.ts` | Source-scoped podcast checkpoints, natural EOF completion, and bookmark CRUD |
+| `src/application/lyric-timing.ts` | Source-scoped lyric offsets and deterministic cue timing; raw lyrics and translation cache stay immutable |
 
 ### Player (mpv IPC)
 | File | Purpose |
@@ -130,11 +131,13 @@ OpenTUI's `useKeyboard` uses `useEffectEvent` internally (ref-based, always call
 | `src/ui/Sidebar.tsx` | Section-aware navigation (music: 4 views, podcast: 3 views) |
 | `src/ui/TrackList.tsx` | Track/episode list with playing indicator, page-based scroll |
 | `src/ui/NowPlaying.tsx` | Playback controls/status, request-bound click-to-seek, source badge, optional real spectrum |
-| `src/ui/Lyrics.tsx` | Synced music lyrics with per-line gradient highlighting |
+| `src/ui/Lyrics.tsx` | Synced lyric highlighting and follow, with document-scoped manual suspension |
 | `src/ui/Transcript.tsx` | Podcast transcript: flowing text, paragraph-level + inline phrase highlight |
 | `src/ui/CommandPalette.tsx` | Fuzzy command search overlay (pure renderer, no useKeyboard) |
 | `src/ui/QuitConfirm.tsx` | Quit confirmation dialog (pure renderer) |
 | `src/ui/SeekInput.tsx` | Jump-to-time input with validation |
+| `src/ui/LyricTiming.tsx` | Signed live timing preview and undo/save controls rendered under the single keyboard dispatcher |
+| `src/ui/useLyricFollow.ts` | Layout-based follow positioning and native scroll suspension for synced music |
 | `src/ui/TranscriptUrlInput.tsx` | Custom transcript URL input |
 | `src/ui/HelpOverlay.tsx` | Keybinding reference |
 | `src/ui/layouts.ts` | 7 presets: default, compact, minimal, split, wide, focus, vertical |
@@ -290,6 +293,7 @@ Before any feature change, check these:
 | Queue projections | Entry identity and traversal ownership | test/store/queue.test.ts |
 | Queue transitions | Shuffle, successor/removal, duplicates | test/store/queue-actions.test.ts |
 | Listening state | Source-bound resume/bookmarks, queue restart and concurrent saves; actual App interaction | test/application/{episode-progress,queue-persistence}.test.ts, test/ui/listening-state.test.tsx |
+| Lyric timing and follow | Source isolation, durable offsets, overlay preview, wrapped geometry and native scroll suspension | test/application/lyric-timing.test.ts, test/ui/{lyric-timing,lyric-follow}.test.tsx |
 | DB queries | Favorites CRUD, history, in-memory SQLite | test/db/queries.test.ts |
 | App search | Fresh and continuation stale results/loading | test/ui/app-search.test.tsx |
 | Request owners | Playback/lyrics/search races and cancellation | test/application/{playback,lyrics,search}.test.ts |

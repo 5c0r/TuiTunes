@@ -14,6 +14,7 @@ import {
   type EpisodePlayIntent,
 } from './application/episode-progress';
 import { dispatchKey } from './application/keyboard';
+import { effectiveCueMs, lyricTimingAtom } from './application/lyric-timing';
 import type { AppRuntime } from './application/runtime';
 import type { CommandId } from './commands';
 import { filterCommands } from './commands';
@@ -36,7 +37,7 @@ import {
   catalogSelectionAtom,
   catalogStateAtom,
 } from './store/catalog';
-import { configAtom } from './store/config';
+import { configAtom, lyricFollowModeAtom } from './store/config';
 import { favoritesAtom, favoritesSetAtom, historyAtom } from './store/library';
 import { lyricsDataAtom, lyricsVisibleAtom, translationEnabledAtom } from './store/lyrics';
 import {
@@ -79,7 +80,8 @@ import { CommandPalette } from './ui/CommandPalette';
 import { EpisodeBookmarks } from './ui/EpisodeBookmarks';
 import { Header } from './ui/Header';
 import { HelpOverlay } from './ui/HelpOverlay';
-import { Lyrics } from './ui/Lyrics';
+import { Lyrics, lyricFollowSuspendedAtom } from './ui/Lyrics';
+import { LyricTiming } from './ui/LyricTiming';
 import { nextLayout } from './ui/layouts';
 import { NowPlaying } from './ui/NowPlaying';
 import { QuitConfirm } from './ui/QuitConfirm';
@@ -116,7 +118,7 @@ export function App({ store, runtime, onQuit }: AppProps): React.ReactNode {
 }
 
 function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
-  const { playback, player, search, lyrics, catalog, db, episodeProgress } = runtime;
+  const { playback, player, search, lyrics, lyricTiming, catalog, db, episodeProgress } = runtime;
   const podcastScrollRef = useRef<ScrollBoxRenderable>(null);
   const searchInputRef = useRef<InputRenderable>(null);
   const p = usePresentation(podcastScrollRef);
@@ -147,6 +149,22 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   const lyricsVisible = useAtomValue(lyricsVisibleAtom);
   const setLyricsVisible = useSetAtom(lyricsVisibleAtom);
   const lyricsData = useAtomValue(lyricsDataAtom);
+  const timing = useAtomValue(lyricTimingAtom);
+  const lyricFollowMode = useAtomValue(lyricFollowModeAtom);
+  const timingDelay =
+    overlay?.kind === 'lyric-timing' && timing === overlay.context
+      ? overlay.delayMs
+      : (timing?.delayMs ?? 0);
+  useEffect(() => {
+    const dismissStale = () => {
+      const current = store.get(overlayAtom);
+      if (current?.kind === 'lyric-timing' && current.context !== store.get(lyricTimingAtom)) {
+        store.set(overlayAtom, null);
+      }
+    };
+    dismissStale();
+    return store.sub(lyricTimingAtom, dismissStale);
+  }, [store]);
   const translationEnabled = useAtomValue(translationEnabledAtom);
   const setTranslationEnabled = useSetAtom(translationEnabledAtom);
 
@@ -310,13 +328,15 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
   );
 
   const transcriptQuery = overlay?.kind === 'transcript-search' ? overlay.query : '';
-  const transcriptMatches = useMemo(
-    () =>
-      overlay?.kind === 'transcript-search'
-        ? searchTranscript(lyricsData?.lines ?? [], overlay.query)
-        : [],
-    [overlay, lyricsData],
-  );
+  const transcriptMatches = useMemo(() => {
+    if (overlay?.kind !== 'transcript-search') return [];
+    const matches = searchTranscript(lyricsData?.lines ?? [], overlay.query);
+    if (!timing?.delayMs) return matches;
+    return matches.map((match) => ({
+      ...match,
+      time: Math.max(0, effectiveCueMs(match.time, timing.delayMs) / 1000),
+    }));
+  }, [overlay, lyricsData, timing]);
   const hasTranscript = (lyricsData?.lines.length ?? 0) > 0;
 
   // Let OpenTUI handle podcast list scroll (same as TrackList).
@@ -614,6 +634,19 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         }
         break;
       }
+      case 'lyric-timing': {
+        try {
+          lyricTiming.save(submitted.context, submitted.delayMs);
+          setOverlay(null);
+        } catch (error) {
+          setOverlay({
+            ...submitted,
+            delayMs: submitted.context.delayMs,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
       case 'seek': {
         const seconds = parseTimeInput(submitted.value);
         if (seconds === null || seconds < 0) return; // invalid — stay open
@@ -629,7 +662,14 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       }
       case 'transcript-search': {
         const match = transcriptMatches[submitted.selectedIdx];
-        if (match) seekTo(match.time);
+        if (match) {
+          const duration = store.get(playerDurationAtom);
+          seekTo(
+            store.get(lyricTimingAtom) && duration > 0
+              ? Math.min(match.time, duration)
+              : match.time,
+          );
+        }
         setOverlay(null);
         break;
       }
@@ -850,6 +890,34 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
       setTranslationEnabled(enabling);
       if (enabling) setLyricsVisible(true);
     },
+    'adjust-lyric-timing': () => {
+      const context = store.get(lyricTimingAtom);
+      if (!context) {
+        setPlayerError('Start a track with synced music lyrics to adjust lyric timing.');
+        return;
+      }
+      setSection('music');
+      setLyricsVisible(true);
+      if (layout === 'focus' || layout === 'wide' || layout === 'minimal') setLayout('default');
+      setOverlay({ kind: 'lyric-timing', context, delayMs: context.delayMs, error: null });
+    },
+    'cycle-lyric-follow': () => {
+      const current = store.get(configAtom);
+      const next: typeof current = {
+        ...current,
+        lyricFollowMode:
+          current.lyricFollowMode === 'keep-visible' ? 'upper-third' : 'keep-visible',
+      };
+      saveConfig(next);
+      setConfig(next);
+      store.set(
+        playerNoticeAtom,
+        next.lyricFollowMode === 'upper-third'
+          ? 'Lyric follow: Upper third'
+          : 'Lyric follow: Keep visible',
+      );
+    },
+    'follow-lyrics': () => store.set(lyricFollowSuspendedAtom, null),
     'episode-resume': () => {
       const selection = episodeSelection();
       if (selection) return playEpisode(selection, { kind: 'resume' });
@@ -1235,7 +1303,12 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
         {listContent}
       </box>
       {/* Lyrics/Transcript: remaining space */}
-      {lyricsVisible && (section === 'podcast' ? <Transcript /> : <Lyrics />)}
+      {lyricsVisible &&
+        (section === 'podcast' ? (
+          <Transcript />
+        ) : (
+          <Lyrics delayMs={timingDelay} followMode={lyricFollowMode} />
+        ))}
     </box>
   );
 
@@ -1419,6 +1492,7 @@ function AppInner({ store, runtime, onQuit }: AppProps): React.ReactNode {
               }}
             />
           )}
+          {overlay?.kind === 'lyric-timing' && <LyricTiming overlay={overlay} />}
           {overlay?.kind === 'seek' && (
             <SeekInput
               value={overlay.value}

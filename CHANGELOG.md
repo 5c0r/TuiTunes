@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- Preview and save source-specific offsets for synced music lyrics. Choose an upper-third follow position and resume follow after manual scrolling.
+
 - Resume podcast episodes and save, jump to, rename, or delete bookmarks tied to the actual audio source.
 - Restore the queue's entries, shuffle order, repeat mode, and selected row without autoplaying.
 - Dismiss search suggestions on Enter, including late results, and keep the search bar visible after opening a podcast feed.

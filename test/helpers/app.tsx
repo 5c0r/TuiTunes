@@ -107,6 +107,7 @@ export interface RenderTestAppOptions {
   player?: PlayerPort;
   resolve?: typeof resolvePlaybackSource;
   capture?: SpectrumCapturePort;
+  fetchMusicLyrics?: RuntimeDependencies['fetchMusicLyrics'];
   onQuit?: () => void;
 }
 
@@ -133,7 +134,7 @@ export async function renderTestApp(options: RenderTestAppOptions = {}): Promise
         throw new Error('OS audio capture is disabled in the offline App harness.');
       },
     },
-    fetchMusicLyrics: async () => null,
+    fetchMusicLyrics: options.fetchMusicLyrics ?? (async () => null),
     fetchUrl: async () => [],
     fetchYouTubeCaptions: async () => null,
     fetchNativeTranslation: async () => null,

@@ -1,5 +1,6 @@
 import { atom } from 'jotai';
 import type { EpisodeBookmark } from '../application/episode-progress';
+import type { LyricTimingContext } from '../application/lyric-timing';
 import type { SearchContinuation, SearchResult, Track } from '../providers/types';
 import type { LayoutPreset } from '../ui/layouts';
 import type { ThemeName } from '../ui/themes';
@@ -31,6 +32,7 @@ export const focusedPanelAtom = atom<FocusedPanel>('main');
 export type Overlay =
   | { kind: 'help' }
   | { kind: 'command-palette'; filter: string; selectedIdx: number }
+  | { kind: 'lyric-timing'; context: LyricTimingContext; delayMs: number; error: string | null }
   | { kind: 'quit-confirm' }
   | { kind: 'seek'; value: string }
   | { kind: 'transcript-url'; value: string }
