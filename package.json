@@ -1,6 +1,6 @@
 {
   "name": "tui-tunes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Terminal music player & podcast client with YouTube Music, synced lyrics, and 8 themes",
   "license": "MIT",
   "repository": {

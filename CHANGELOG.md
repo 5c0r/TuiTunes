@@ -1,3 +1,19 @@
+# [1.2.0](https://github.com/5c0r/TuiTunes/compare/v1.1.0...v1.2.0) (2026-11-22)
+
+
+### Bug Fixes
+
+* **lyrics:** avoid overlap with translation settings ([e0907a7](https://github.com/5c0r/TuiTunes/commit/e0907a767dc00cb4c94e58fc00fa2466025b7726))
+* **lyrics:** subscribe to follow preference directly ([ad3641b](https://github.com/5c0r/TuiTunes/commit/ad3641b83dcd7cd7962c79fcb5087c71b53ecfc4))
+
+
+### Features
+
+* **lyrics:** add timing offsets and follow controls ([2df4232](https://github.com/5c0r/TuiTunes/commit/2df4232e542ca631d3bf96790b336658add80b66))
+* **lyrics:** add timing offsets and follow controls - [#5](https://github.com/5c0r/TuiTunes/issues/5)⁠ ([641afbd](https://github.com/5c0r/TuiTunes/commit/641afbde31ecc1284da9a3e14789021992854067))
+* **translation:** add explicit local and cloud providers ([0eec6b6](https://github.com/5c0r/TuiTunes/commit/0eec6b6acdd337b443275948ea594f38a56a2568))
+* **translation:** add explicit local and cloud providers ([9e29dff](https://github.com/5c0r/TuiTunes/commit/9e29dff7dd6f39d82a6de02d854599ef016b0445))
+
 # [1.1.0](https://github.com/5c0r/TuiTunes/compare/v1.0.0...v1.1.0) (2026-11-22)
 
 
